@@ -1,0 +1,12 @@
+# Environment
+.env
+venv/
+__pycache__/
+*.pyc
+
+# Vector store (can be large)
+chroma_db/
+
+# OS
+.DS_Store
+Thumbs.db
