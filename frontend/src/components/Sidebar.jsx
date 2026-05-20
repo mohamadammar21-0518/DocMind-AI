@@ -7,7 +7,6 @@ const MODELS = ['Llama 3.1 8B (Fast)', 'Llama 3.3 70B (Best Quality)', 'Gemma 2 
 
 export default function Sidebar({ session, onUploaded }) {
   const [apiKey,       setApiKey]       = useState('')
-  const [openaiKey,    setOpenaiKey]    = useState('')
   const [showKey,      setShowKey]      = useState(false)
   const [model,        setModel]        = useState(MODELS[0])
   const [chunkSize,    setChunkSize]    = useState(1000)
@@ -23,14 +22,12 @@ export default function Sidebar({ session, onUploaded }) {
 
   const handleUpload = async () => {
     if (!apiKey)        return toast.error('Enter your Groq API key')
-    if (!openaiKey)     return toast.error('Enter your OpenAI API key for embeddings')
     if (!files.length)  return toast.error('Upload at least one PDF')
     setLoading(true)
     const fd = new FormData()
     files.forEach(f => fd.append('files', f))
-    fd.append('groq_api_key',  apiKey)
-    fd.append('openai_api_key', openaiKey)
-    fd.append('model_label',   model)
+    fd.append('groq_api_key', apiKey)
+    fd.append('model_label',  model)
     fd.append('chunk_size',   chunkSize)
     fd.append('chunk_overlap',chunkOverlap)
     try {
@@ -78,14 +75,6 @@ export default function Sidebar({ session, onUploaded }) {
         </div>
         <a href="https://console.groq.com" target="_blank" rel="noreferrer" style={{ fontSize: '0.72rem', color: 'var(--accent)', textDecoration: 'none', display: 'block', marginTop: '0.3rem' }}>
           ↗ Get free key at console.groq.com
-        </a>
-
-        <Label>🔑 OpenAI API Key <span style={{color:'var(--text-muted)',fontWeight:400}}>(for embeddings)</span></Label>
-        <input type="password" value={openaiKey} onChange={e => setOpenaiKey(e.target.value)}
-          placeholder="sk-..." className="input-field"
-          style={{ width: '100%', padding: '0.6rem 0.9rem', fontSize: '0.85rem' }} />
-        <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" style={{ fontSize: '0.72rem', color: 'var(--accent)', textDecoration: 'none', display: 'block', marginTop: '0.3rem' }}>
-          ↗ Get key at platform.openai.com (~$0.0001/upload)
         </a>
 
         <Label>🤖 AI Model</Label>

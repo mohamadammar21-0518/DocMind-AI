@@ -29,13 +29,13 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_core.documents import Document
-from langchain_openai import OpenAIEmbeddings
+from langchain_community.embeddings import FastEmbedEmbeddings
 
 load_dotenv()
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 CHROMA_DIR      = "chroma_db"
-EMBEDDING_MODEL = "text-embedding-3-small"   # OpenAI API — no local RAM needed
+EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"   # fastembed — free, ~50MB, no torch
 
 GROQ_MODELS = {
     "Llama 3.1 8B (Fast)"         : "llama-3.1-8b-instant",
@@ -71,10 +71,7 @@ def load_and_split_multiple_pdfs(pdf_files, chunk_size=1000, chunk_overlap=200):
 
 # ── 2. Vector Store ────────────────────────────────────────────────────────────
 def build_vectorstore(chunks, collection_name="pdf_collection"):
-    embeddings = OpenAIEmbeddings(
-        model          = EMBEDDING_MODEL,
-        openai_api_key = os.getenv("OPENAI_API_KEY", ""),
-    )
+    embeddings = FastEmbedEmbeddings(model_name=EMBEDDING_MODEL)
 
     # Use in-memory ChromaDB — works on all cloud platforms (no disk needed)
     import chromadb as _chromadb

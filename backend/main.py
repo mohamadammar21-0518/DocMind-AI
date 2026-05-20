@@ -63,7 +63,6 @@ def get_models():
 async def upload_pdfs(
     files        : List[UploadFile] = File(...),
     groq_api_key : str = Form(...),
-    openai_api_key: str = Form(...),
     model_label  : str = Form("Llama 3.1 8B (Fast)"),
     chunk_size   : int = Form(1000),
     chunk_overlap: int = Form(200),
@@ -71,8 +70,6 @@ async def upload_pdfs(
     if not files:
         raise HTTPException(400, "No files uploaded")
 
-    # Set API keys in environment for this request
-    os.environ["OPENAI_API_KEY"] = openai_api_key
     model_name = GROQ_MODELS.get(model_label, "llama-3.1-8b-instant")
     tmp_files  = []
 
