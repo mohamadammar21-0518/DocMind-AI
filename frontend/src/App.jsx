@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Toaster } from 'react-hot-toast'
+import { Toaster, toast } from 'react-hot-toast'
 import { MessageSquare, FileText, BookOpen, BarChart2 } from 'lucide-react'
 import LandingPage from './components/LandingPage'
 import Sidebar from './components/Sidebar'
@@ -7,7 +7,7 @@ import ChatTab from './components/ChatTab'
 import SummaryTab from './components/SummaryTab'
 import StudyNotesTab from './components/StudyNotesTab'
 import EvaluationTab from './components/EvaluationTab'
-import { getSession } from './api'
+import { getSession, pingBackend } from './api'
 
 const TABS = [
   { id: 'chat',    Icon: MessageSquare, full: 'Chat' },
@@ -31,6 +31,29 @@ export default function App() {
   }
 
   useEffect(() => { refreshSession() }, [])
+
+  // ── Cold start detection ────────────────────────────────────────────────
+  useEffect(() => {
+    const checkBackend = async () => {
+      const start = Date.now()
+      try {
+        await pingBackend()
+        const elapsed = Date.now() - start
+        if (elapsed > 3000) {
+          toast('Backend was sleeping — it\'s now awake and ready!', {
+            icon: '⚡', duration: 4000,
+            style: { background: '#1e1e35', color: '#e2e8f0', border: '1px solid #667eea' }
+          })
+        }
+      } catch {
+        toast('Backend is waking up... please wait 30 seconds then try again.', {
+          icon: '⏳', duration: 8000,
+          style: { background: '#1e1e35', color: '#e2e8f0', border: '1px solid #f6d365' }
+        })
+      }
+    }
+    checkBackend()
+  }, [])
 
   useEffect(() => {
     const handleResize = () => {

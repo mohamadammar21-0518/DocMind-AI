@@ -33,7 +33,14 @@ export default function Sidebar({ session, onUploaded }) {
       toast.success(res.data.message)
       setFiles([])
       onUploaded()
-    } catch (e) { toast.error(e.response?.data?.detail || 'Upload failed') }
+    } catch (e) {
+      const msg = e.response?.data?.detail || 'Upload failed'
+      if (e.response?.status === 413) {
+        toast.error(msg, { duration: 6000 })
+      } else {
+        toast.error(msg)
+      }
+    }
     finally { setLoading(false) }
   }
 
@@ -106,12 +113,19 @@ export default function Sidebar({ session, onUploaded }) {
 
         {files.length > 0 && (
           <div style={{ marginTop: '0.6rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-            {files.map((f, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(102,126,234,0.08)', border: '1px solid rgba(102,126,234,0.2)', borderRadius: '8px', padding: '0.4rem 0.7rem' }}>
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📄 {f.name}</span>
-                <button onClick={() => setFiles(files.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '1rem', flexShrink: 0, marginLeft: '0.4rem' }}>×</button>
-              </div>
-            ))}
+            {files.map((f, i) => {
+              const sizeMB = (f.size / 1024 / 1024).toFixed(1)
+              const tooLarge = f.size > 15 * 1024 * 1024
+              return (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: tooLarge ? 'rgba(245,87,108,0.08)' : 'rgba(102,126,234,0.08)', border: `1px solid ${tooLarge ? 'rgba(245,87,108,0.3)' : 'rgba(102,126,234,0.2)'}`, borderRadius: '8px', padding: '0.4rem 0.7rem' }}>
+                  <span style={{ fontSize: '0.78rem', color: tooLarge ? 'var(--danger)' : 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    📄 {f.name} <span style={{ color: 'var(--text-muted)' }}>({sizeMB}MB)</span>
+                    {tooLarge && <span style={{ color: 'var(--danger)', marginLeft: '0.3rem' }}>— too large (max 15MB)</span>}
+                  </span>
+                  <button onClick={() => setFiles(files.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '1rem', flexShrink: 0, marginLeft: '0.4rem' }}>×</button>
+                </div>
+              )
+            })}
           </div>
         )}
 
