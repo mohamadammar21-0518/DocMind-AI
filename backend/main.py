@@ -102,7 +102,10 @@ async def upload_pdfs(
             "message"  : f"{len(files)} document(s) indexed successfully",
         }
     except Exception as e:
-        raise HTTPException(500, str(e))
+        import traceback
+        error_detail = traceback.format_exc()
+        print(f"[ERROR] Upload failed: {error_detail}")
+        raise HTTPException(500, f"{str(e)} | {error_detail}")
     finally:
         for f in tmp_files:
             try: os.unlink(f["path"])
