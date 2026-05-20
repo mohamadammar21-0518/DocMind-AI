@@ -146,3 +146,50 @@ body {
 .animate-fade     { animation: fadeIn 0.4s ease forwards; }
 .animate-float    { animation: float 3s ease-in-out infinite; }
 .animate-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+
+/* ── Mobile Responsive ──────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  /* App layout — sidebar hidden by default on mobile */
+  .sidebar-mobile-hidden { display: none !important; }
+  .sidebar-mobile-overlay {
+    position: fixed !important; top: 0; left: 0; bottom: 0;
+    z-index: 200; width: 300px !important;
+    box-shadow: 4px 0 30px rgba(0,0,0,0.5);
+  }
+  .sidebar-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    z-index: 199; backdrop-filter: blur(4px);
+  }
+
+  /* Top bar — hide status text, compress tabs */
+  .topbar-status { display: none !important; }
+  .topbar-back   { display: none !important; }
+  .topbar-tabs   { overflow-x: auto; scrollbar-width: none; }
+  .topbar-tabs::-webkit-scrollbar { display: none; }
+
+  /* Tabs — icon only on mobile */
+  .tab-label { display: none !important; }
+
+  /* Grids — single column on mobile */
+  .grid-3col { grid-template-columns: 1fr !important; }
+  .grid-2col { grid-template-columns: 1fr !important; }
+
+  /* Chat bubbles — full width */
+  .user-bubble, .bot-bubble { max-width: 90% !important; }
+
+  /* Padding reduction */
+  .mobile-pad { padding: 1rem !important; }
+
+  /* Summary/Notes info cards */
+  .info-cards { grid-template-columns: 1fr !important; }
+
+  /* Evaluation metric cards */
+  .metric-grid { grid-template-columns: 1fr !important; }
+
+  /* Markdown tables — scrollable */
+  .markdown table { display: block; overflow-x: auto; }
+}
+
+@media (max-width: 480px) {
+  .topbar-logo-text { display: none !important; }
+}

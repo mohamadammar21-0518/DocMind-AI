@@ -47,7 +47,7 @@ export default function EvaluationTab({ session }) {
         </p>
 
         {/* Metric cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '1rem', marginBottom: '2rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
           {METRICS.map(m => (
             <div key={m.key} style={{
               background: '#1e1e35', border: '1px solid #2d2d4e', borderRadius: '12px', padding: '1.2rem',

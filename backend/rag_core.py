@@ -72,19 +72,22 @@ def build_vectorstore(chunks, collection_name="pdf_collection"):
     import chromadb as _chromadb
     from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
-    # Create a fresh client each time
     chroma_client = _chromadb.EphemeralClient()
     ef = DefaultEmbeddingFunction()
 
-    collection = chroma_client.create_collection(
+    # get_or_create then wipe existing docs for a fresh start
+    collection = chroma_client.get_or_create_collection(
         name               = collection_name,
         embedding_function = ef,
     )
+    existing = collection.get()
+    if existing["ids"]:
+        collection.delete(ids=existing["ids"])
 
     # Add documents in batches
-    texts    = [c.page_content for c in chunks]
-    metadatas= [c.metadata     for c in chunks]
-    ids      = [str(i)         for i in range(len(chunks))]
+    texts     = [c.page_content for c in chunks]
+    metadatas = [c.metadata     for c in chunks]
+    ids       = [str(i)         for i in range(len(chunks))]
 
     batch = 100
     for i in range(0, len(texts), batch):
@@ -96,7 +99,6 @@ def build_vectorstore(chunks, collection_name="pdf_collection"):
 
     print(f"[RAG] Vector store built with {len(chunks)} chunks (chromadb native)")
 
-    # Wrap in a simple retriever object
     class SimpleVectorStore:
         def __init__(self, col):
             self.col = col

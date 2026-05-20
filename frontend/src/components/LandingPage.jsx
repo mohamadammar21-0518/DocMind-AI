@@ -28,8 +28,10 @@ export default function LandingPage({ onEnter }) {
           <span style={{ fontWeight: 700, fontSize: '1rem', letterSpacing: '-0.3px' }}>DocMind AI</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <NavLink href="#features">Features</NavLink>
-          <NavLink href="#how">How it works</NavLink>
+          <div className="nav-links" style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+            <NavLink href="#features">Features</NavLink>
+            <NavLink href="#how">How it works</NavLink>
+          </div>
           <button onClick={onEnter} style={{
             background: 'white', color: '#0a0a0a',
             border: 'none', borderRadius: '8px',
@@ -50,7 +52,7 @@ export default function LandingPage({ onEnter }) {
       <section style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '8rem 1.5rem 4rem', position: 'relative' }}>
 
         {/* Subtle background glow */}
-        <div style={{ position: 'absolute', top: '20%', left: '50%', transform: 'translateX(-50%)', width: '600px', height: '400px', background: 'radial-gradient(ellipse, rgba(102,126,234,0.08) 0%, transparent 70%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', top: '20%', left: '50%', transform: 'translateX(-50%)', width: 'min(600px, 100vw)', height: '400px', background: 'radial-gradient(ellipse, rgba(102,126,234,0.08) 0%, transparent 70%)', pointerEvents: 'none' }} />
 
         {/* Logo */}
         <img src="/logo.png" alt="DocMind AI" style={{ width: '90px', height: '90px', objectFit: 'contain', marginBottom: '1rem', animation: 'fadeInUp 0.5s ease', filter: 'drop-shadow(0 0 20px rgba(102,126,234,0.3))' }} />
@@ -255,6 +257,9 @@ export default function LandingPage({ onEnter }) {
       <style>{`
         @keyframes fadeInUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
         @keyframes bounce-dot { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-5px)} }
+        @media (max-width: 640px) {
+          .nav-links { display: none !important; }
+        }
       `}</style>
     </div>
   )

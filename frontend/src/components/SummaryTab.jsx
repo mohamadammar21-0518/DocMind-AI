@@ -35,7 +35,7 @@ export default function SummaryTab({ session }) {
         </div>
 
         {/* Info cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '1rem', marginBottom: '2rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
           {[
             { icon: '📖', label: 'Full Coverage', desc: 'Every page analyzed' },
             { icon: '🗂️', label: 'Structured', desc: 'Overview · Topics · Key Points · Conclusion' },
