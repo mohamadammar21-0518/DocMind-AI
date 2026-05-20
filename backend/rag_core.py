@@ -22,20 +22,18 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 from langchain_community.retrievers import BM25Retriever
-from langchain_classic.retrievers import EnsembleRetriever
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_core.documents import Document
-from langchain_community.embeddings import FastEmbedEmbeddings
+from langchain_classic.retrievers import EnsembleRetriever
 
 load_dotenv()
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 CHROMA_DIR      = "chroma_db"
-EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"   # fastembed — free, ~50MB, no torch
 
 GROQ_MODELS = {
     "Llama 3.1 8B (Fast)"         : "llama-3.1-8b-instant",
@@ -71,60 +69,86 @@ def load_and_split_multiple_pdfs(pdf_files, chunk_size=1000, chunk_overlap=200):
 
 # ── 2. Vector Store ────────────────────────────────────────────────────────────
 def build_vectorstore(chunks, collection_name="pdf_collection"):
-    embeddings = FastEmbedEmbeddings(model_name=EMBEDDING_MODEL)
-
-    # Use in-memory ChromaDB — works on all cloud platforms (no disk needed)
     import chromadb as _chromadb
-    chroma_client = _chromadb.EphemeralClient()
+    from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
-    # Clean up any leftover persistent store on disk
+    chroma_client = _chromadb.EphemeralClient()
+    ef = DefaultEmbeddingFunction()
+
+    # Clean up any leftover persistent store
     if os.path.exists(CHROMA_DIR):
-        try:
-            old = _chromadb.PersistentClient(path=CHROMA_DIR)
-            old.reset(); del old
-        except Exception:
-            pass
         try:
             shutil.rmtree(CHROMA_DIR)
         except Exception:
             pass
 
-    vectorstore = Chroma.from_documents(
-        documents       = chunks,
-        embedding       = embeddings,
-        client          = chroma_client,
-        collection_name = collection_name,
+    # Build collection directly with chromadb
+    collection = chroma_client.create_collection(
+        name               = collection_name,
+        embedding_function = ef,
     )
-    print(f"[RAG] Vector store built with {len(chunks)} chunks (in-memory)")
-    return vectorstore
+
+    # Add documents in batches
+    texts    = [c.page_content for c in chunks]
+    metadatas= [c.metadata     for c in chunks]
+    ids      = [str(i)         for i in range(len(chunks))]
+
+    batch = 100
+    for i in range(0, len(texts), batch):
+        collection.add(
+            documents = texts[i:i+batch],
+            metadatas = metadatas[i:i+batch],
+            ids       = ids[i:i+batch],
+        )
+
+    print(f"[RAG] Vector store built with {len(chunks)} chunks (chromadb native)")
+
+    # Wrap in a simple retriever object
+    class SimpleVectorStore:
+        def __init__(self, col):
+            self.col = col
+        def similarity_search(self, query, k=6):
+            results = self.col.query(query_texts=[query], n_results=min(k, len(texts)))
+            docs = []
+            for i, doc in enumerate(results["documents"][0]):
+                meta = results["metadatas"][0][i] if results["metadatas"] else {}
+                from langchain_core.documents import Document
+                docs.append(Document(page_content=doc, metadata=meta))
+            return docs
+        def get(self):
+            all_docs = self.col.get()
+            return {"documents": all_docs["documents"], "metadatas": all_docs["metadatas"]}
+
+    return SimpleVectorStore(collection)
 
 
 # ── 3. Hybrid Retriever (BM25 + Vector + Reranker) ────────────────────────────
 def build_hybrid_retriever(vectorstore, chunks, k=6):
-    """
-    Combines BM25 (keyword) + MMR vector search, then reranks with cross-encoder.
-    BM25  → good for exact terms, names, codes
-    Vector → good for semantic/conceptual questions
-    Reranker → picks the truly best chunks from combined results
-    """
-    # BM25 retriever (keyword-based)
     bm25_retriever = BM25Retriever.from_documents(chunks)
     bm25_retriever.k = k
 
-    # Vector retriever (semantic)
-    vector_retriever = vectorstore.as_retriever(
-        search_type   = "mmr",
-        search_kwargs = {"k": k, "fetch_k": 20},
-    )
+    class VectorRetriever:
+        def invoke(self, query):
+            return vectorstore.similarity_search(query, k=k)
 
-    # Ensemble: 40% BM25 + 60% vector
-    ensemble_retriever = EnsembleRetriever(
-        retrievers = [bm25_retriever, vector_retriever],
-        weights    = [0.4, 0.6],
-    )
+    class HybridRetriever:
+        def __init__(self):
+            self.vectorstore = vectorstore
+        def invoke(self, query):
+            bm25_docs   = bm25_retriever.invoke(query)
+            vector_docs = vectorstore.similarity_search(query, k=k)
+            # Merge and deduplicate
+            seen = set()
+            merged = []
+            for doc in bm25_docs + vector_docs:
+                key = doc.page_content[:80]
+                if key not in seen:
+                    seen.add(key)
+                    merged.append(doc)
+            return merged[:k*2]
 
-    print("[RAG] Hybrid retriever (BM25 + Vector) ready")
-    return ensemble_retriever
+    print("[RAG] Hybrid retriever ready")
+    return HybridRetriever()
 
 
 def rerank_documents(query, docs, top_k=4):
