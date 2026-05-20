@@ -73,7 +73,7 @@ export default function App() {
             background: 'none', border: 'none', cursor: 'pointer',
             display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0,
           }}>
-            <span style={{ fontSize: '1.2rem' }}>🧠</span>
+            <img src="/logo.png" alt="DocMind AI" style={{ width: '28px', height: '28px', objectFit: 'contain', borderRadius: '6px' }} />
             <span style={{ fontFamily: 'Space Grotesk', fontWeight: 700, fontSize: '1rem', background: 'linear-gradient(135deg,#667eea,#f093fb)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>DocMind AI</span>
           </button>
 

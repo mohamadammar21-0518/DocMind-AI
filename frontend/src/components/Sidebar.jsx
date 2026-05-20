@@ -56,7 +56,7 @@ export default function Sidebar({ session, onUploaded }) {
       {/* Header */}
       <div style={{ padding: '1.5rem 1.2rem 1rem', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.3rem' }}>
-          <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'linear-gradient(135deg,#667eea,#764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', boxShadow: '0 4px 15px rgba(102,126,234,0.3)' }}>🧠</div>
+          <img src="/logo.png" alt="DocMind AI" style={{ width: '36px', height: '36px', objectFit: 'contain', borderRadius: '10px' }} />
           <div>
             <div style={{ fontFamily: 'Space Grotesk', fontWeight: 700, fontSize: '1rem', background: 'linear-gradient(135deg,#667eea,#f093fb)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>DocMind AI</div>
             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', letterSpacing: '1px', textTransform: 'uppercase' }}>Document Intelligence</div>

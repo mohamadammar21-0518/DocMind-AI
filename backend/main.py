@@ -58,13 +58,18 @@ def get_models():
 @app.post("/upload")
 async def upload_pdfs(
     files        : List[UploadFile] = File(...),
-    groq_api_key : str = Form(...),
+    groq_api_key : str = Form(default=""),
     model_label  : str = Form("Llama 3.1 8B (Fast)"),
     chunk_size   : int = Form(1000),
     chunk_overlap: int = Form(200),
 ):
     if not files:
         raise HTTPException(400, "No files uploaded")
+
+    # Use env var if no key provided by user
+    key = groq_api_key or os.getenv("GROQ_API_KEY", "")
+    if not key:
+        raise HTTPException(400, "Groq API key required")
 
     model_name = GROQ_MODELS.get(model_label, "llama-3.1-8b-instant")
     tmp_files  = []
