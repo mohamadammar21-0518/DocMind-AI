@@ -15,7 +15,6 @@ const TABS = [
   { id: 'notes',   Icon: BookOpen,      full: 'Study Notes' },
   { id: 'eval',    Icon: BarChart2,     full: 'Evaluation' },
 ]
-]
 
 export default function App() {
   const [page,         setPage]         = useState('landing')
