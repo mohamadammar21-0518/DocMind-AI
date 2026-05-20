@@ -84,7 +84,7 @@ async def upload_pdfs(
         chunks, total_pages = load_and_split_multiple_pdfs(
             tmp_files, chunk_size, chunk_overlap)
         vectorstore = build_vectorstore(chunks)
-        qa_chain    = build_qa_chain(vectorstore, chunks, groq_api_key, model_name)
+        qa_chain    = build_qa_chain(vectorstore, chunks, key, model_name)
 
         session["qa_chain"]  = qa_chain
         session["chunks"]    = chunks

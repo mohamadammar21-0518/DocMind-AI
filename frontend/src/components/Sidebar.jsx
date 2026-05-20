@@ -7,8 +7,6 @@ import { uploadPDFs, clearSession } from '../api'
 const MODELS = ['Llama 3.1 8B (Fast)', 'Llama 3.3 70B (Best Quality)', 'Gemma 2 9B']
 
 export default function Sidebar({ session, onUploaded }) {
-  const [apiKey,       setApiKey]       = useState('')
-  const [showKey,      setShowKey]      = useState(false)
   const [model,        setModel]        = useState(MODELS[0])
   const [chunkSize,    setChunkSize]    = useState(1000)
   const [chunkOverlap, setChunkOverlap] = useState(200)
@@ -22,12 +20,11 @@ export default function Sidebar({ session, onUploaded }) {
   })
 
   const handleUpload = async () => {
-    if (!apiKey)        return toast.error('Enter your Groq API key')
-    if (!files.length)  return toast.error('Upload at least one PDF')
+    if (!files.length) return toast.error('Upload at least one PDF')
     setLoading(true)
     const fd = new FormData()
     files.forEach(f => fd.append('files', f))
-    fd.append('groq_api_key', apiKey)
+    fd.append('groq_api_key', '')   // backend uses env var
     fd.append('model_label',  model)
     fd.append('chunk_size',   chunkSize)
     fd.append('chunk_overlap',chunkOverlap)
@@ -133,7 +130,9 @@ export default function Sidebar({ session, onUploaded }) {
 
         <button onClick={handleUpload} disabled={loading} className="btn-primary"
           style={{ width: '100%', marginTop: '0.8rem', padding: '0.75rem', fontSize: '0.9rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-          {loading ? <><Spinner /> Processing...</> : <><Zap size={15} /> Process Documents</>}
+          {loading
+            ? <><span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> Processing...</>
+            : <><Zap size={15} /> Process Documents</>}
         </button>
 
         {/* Session stats */}
