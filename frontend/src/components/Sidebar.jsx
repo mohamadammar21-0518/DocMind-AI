@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
 import toast from 'react-hot-toast'
-import { Key, Bot, Settings, Upload, FileText, Trash2, Download, Zap, CheckCircle } from 'lucide-react'
+import { Bot, Settings, Upload, FileText, Zap, CheckCircle } from 'lucide-react'
 import { uploadPDFs, clearSession } from '../api'
 
 const MODELS = ['Llama 3.1 8B (Fast)', 'Llama 3.3 70B (Best Quality)', 'Gemma 2 9B']
@@ -63,19 +63,6 @@ export default function Sidebar({ session, onUploaded }) {
 
       {/* Scrollable content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 1.2rem 1.2rem' }}>
-
-        <Label icon={Key}>Groq API Key</Label>
-        <div style={{ position: 'relative' }}>
-          <input type={showKey ? 'text' : 'password'} value={apiKey} onChange={e => setApiKey(e.target.value)}
-            placeholder="gsk_..." className="input-field"
-            style={{ width: '100%', padding: '0.6rem 2.5rem 0.6rem 0.9rem', fontSize: '0.85rem' }} />
-          <button onClick={() => setShowKey(!showKey)} style={{ position: 'absolute', right: '0.6rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.85rem' }}>
-            {showKey ? '🙈' : '👁️'}
-          </button>
-        </div>
-        <a href="https://console.groq.com" target="_blank" rel="noreferrer" style={{ fontSize: '0.72rem', color: 'var(--accent)', textDecoration: 'none', display: 'block', marginTop: '0.3rem' }}>
-          ↗ Get free key at console.groq.com
-        </a>
 
         <Label icon={Bot}>AI Model</Label>
         <select value={model} onChange={e => setModel(e.target.value)} className="input-field"
