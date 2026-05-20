@@ -27,11 +27,12 @@ app.add_middleware(
 
 # ── In-memory session store (single user) ────────────────────────────────────
 session = {
-    "qa_chain"   : None,
-    "chunks"     : [],
-    "pdf_names"  : [],
-    "num_pages"  : 0,
-    "num_chunks" : 0,
+    "qa_chain"     : None,
+    "chunks"       : [],
+    "pdf_names"    : [],
+    "num_pages"    : 0,
+    "num_chunks"   : 0,
+    "chroma_client": None,
 }
 
 # ── Request models ────────────────────────────────────────────────────────────

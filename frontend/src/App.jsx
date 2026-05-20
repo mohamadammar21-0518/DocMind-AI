@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Toaster } from 'react-hot-toast'
+import { MessageSquare, FileText, BookOpen, BarChart2 } from 'lucide-react'
 import LandingPage from './components/LandingPage'
 import Sidebar from './components/Sidebar'
 import ChatTab from './components/ChatTab'
@@ -9,10 +10,11 @@ import EvaluationTab from './components/EvaluationTab'
 import { getSession } from './api'
 
 const TABS = [
-  { id: 'chat',    label: '💬', full: 'Chat' },
-  { id: 'summary', label: '📝', full: 'Summary' },
-  { id: 'notes',   label: '🎓', full: 'Study Notes' },
-  { id: 'eval',    label: '📊', full: 'Evaluation' },
+  { id: 'chat',    Icon: MessageSquare, full: 'Chat' },
+  { id: 'summary', Icon: FileText,      full: 'Summary' },
+  { id: 'notes',   Icon: BookOpen,      full: 'Study Notes' },
+  { id: 'eval',    Icon: BarChart2,     full: 'Evaluation' },
+]
 ]
 
 export default function App() {
@@ -105,18 +107,20 @@ export default function App() {
 
           {/* Tabs */}
           <div style={{ display: 'flex', gap: '0.2rem', flexShrink: 0 }}>
-            {TABS.map(t => (
-              <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
-                background: activeTab === t.id ? 'rgba(102,126,234,0.12)' : 'transparent',
-                color: activeTab === t.id ? 'var(--accent)' : 'var(--text-muted)',
+            {TABS.map(({ id, Icon, full }) => (
+              <button key={id} onClick={() => setActiveTab(id)} style={{
+                background: activeTab === id ? 'rgba(102,126,234,0.12)' : 'transparent',
+                color: activeTab === id ? 'var(--accent)' : 'var(--text-muted)',
                 border: 'none',
-                borderBottom: `2px solid ${activeTab === t.id ? 'var(--accent)' : 'transparent'}`,
+                borderBottom: `2px solid ${activeTab === id ? 'var(--accent)' : 'transparent'}`,
                 padding: '0.4rem 0.9rem', cursor: 'pointer',
-                fontSize: '0.82rem', fontWeight: activeTab === t.id ? 600 : 400,
+                fontSize: '0.82rem', fontWeight: activeTab === id ? 600 : 400,
                 transition: 'all 0.2s', fontFamily: 'Inter, sans-serif',
                 borderRadius: '8px 8px 0 0', whiteSpace: 'nowrap',
+                display: 'flex', alignItems: 'center', gap: '0.4rem',
               }}>
-                {t.label} {t.full}
+                <Icon size={14} />
+                {full}
               </button>
             ))}
           </div>

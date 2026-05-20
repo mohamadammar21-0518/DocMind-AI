@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
 import toast from 'react-hot-toast'
+import { Key, Bot, Settings, Upload, FileText, Trash2, Download, Zap, CheckCircle } from 'lucide-react'
 import { uploadPDFs, clearSession } from '../api'
 
 const MODELS = ['Llama 3.1 8B (Fast)', 'Llama 3.3 70B (Best Quality)', 'Gemma 2 9B']
@@ -43,8 +44,10 @@ export default function Sidebar({ session, onUploaded }) {
     await clearSession(); toast.success('Session cleared'); onUploaded()
   }
 
-  const Label = ({ children }) => (
-    <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '1.5px', margin: '1.2rem 0 0.5rem' }}>{children}</div>
+  const Label = ({ icon: Icon, children }) => (
+    <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '1.5px', margin: '1.2rem 0 0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+      {Icon && <Icon size={11} />}{children}
+    </div>
   )
 
   return (
@@ -64,7 +67,7 @@ export default function Sidebar({ session, onUploaded }) {
       {/* Scrollable content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 1.2rem 1.2rem' }}>
 
-        <Label>🔑 Groq API Key</Label>
+        <Label icon={Key}>Groq API Key</Label>
         <div style={{ position: 'relative' }}>
           <input type={showKey ? 'text' : 'password'} value={apiKey} onChange={e => setApiKey(e.target.value)}
             placeholder="gsk_..." className="input-field"
@@ -77,15 +80,16 @@ export default function Sidebar({ session, onUploaded }) {
           ↗ Get free key at console.groq.com
         </a>
 
-        <Label>🤖 AI Model</Label>
+        <Label icon={Bot}>AI Model</Label>
         <select value={model} onChange={e => setModel(e.target.value)} className="input-field"
           style={{ width: '100%', padding: '0.6rem 0.9rem', fontSize: '0.85rem', cursor: 'pointer' }}>
           {MODELS.map(m => <option key={m} style={{ background: '#12122a' }}>{m}</option>)}
         </select>
 
-        <button onClick={() => setShowSettings(!showSettings)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.75rem', cursor: 'pointer', marginTop: '0.6rem', padding: 0, fontFamily: 'Inter,sans-serif', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-          <span style={{ transition: 'transform 0.2s', display: 'inline-block', transform: showSettings ? 'rotate(90deg)' : '' }}>▶</span>
+        <button onClick={() => setShowSettings(!showSettings)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.75rem', cursor: 'pointer', marginTop: '0.6rem', padding: 0, fontFamily: 'Inter,sans-serif', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <Settings size={12} />
           Advanced chunking settings
+          <span style={{ transition: 'transform 0.2s', display: 'inline-block', transform: showSettings ? 'rotate(180deg)' : '' }}>▾</span>
         </button>
 
         {showSettings && (
@@ -97,7 +101,7 @@ export default function Sidebar({ session, onUploaded }) {
           </div>
         )}
 
-        <Label>📂 Upload Documents</Label>
+        <Label icon={Upload}>Upload Documents</Label>
         <div {...getRootProps()} style={{
           border: `2px dashed ${isDragActive ? 'var(--accent)' : 'var(--border)'}`,
           borderRadius: '14px', padding: '1.5rem', textAlign: 'center', cursor: 'pointer',
@@ -107,7 +111,9 @@ export default function Sidebar({ session, onUploaded }) {
           onMouseEnter={e => { if (!isDragActive) { e.currentTarget.style.borderColor = 'rgba(102,126,234,0.4)'; e.currentTarget.style.background = 'rgba(102,126,234,0.04)' } }}
           onMouseLeave={e => { if (!isDragActive) { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--bg-glass)' } }}>
           <input {...getInputProps()} />
-          <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{isDragActive ? '📥' : '📄'}</div>
+          <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
+            {isDragActive ? <Download size={28} color="var(--accent)" /> : <FileText size={28} color="var(--text-muted)" />}
+          </div>
           <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
             {isDragActive ? 'Drop your PDFs here' : 'Drag & drop PDFs'}
           </div>
@@ -126,19 +132,16 @@ export default function Sidebar({ session, onUploaded }) {
         )}
 
         <button onClick={handleUpload} disabled={loading} className="btn-primary"
-          style={{ width: '100%', marginTop: '0.8rem', padding: '0.75rem', fontSize: '0.9rem', borderRadius: '12px' }}>
-          {loading ? (
-            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-              <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} />
-              Processing...
-            </span>
-          ) : '⚡ Process Documents'}
+          style={{ width: '100%', marginTop: '0.8rem', padding: '0.75rem', fontSize: '0.9rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+          {loading ? <><Spinner /> Processing...</> : <><Zap size={15} /> Process Documents</>}
         </button>
 
         {/* Session stats */}
         {session.loaded && (
           <div style={{ marginTop: '1.2rem', background: 'var(--bg-glass)', border: '1px solid var(--border)', borderRadius: '14px', padding: '1rem' }}>
-            <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '0.8rem' }}>📊 Active Session</div>
+            <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <CheckCircle size={11} /> Active Session
+            </div>
             {session.pdf_names.map((n, i) => (
               <div key={i} style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '0.3rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <span style={{ color: 'var(--accent)' }}>📄</span> {n}

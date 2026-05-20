@@ -72,17 +72,10 @@ def build_vectorstore(chunks, collection_name="pdf_collection"):
     import chromadb as _chromadb
     from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
+    # Create a fresh client each time
     chroma_client = _chromadb.EphemeralClient()
     ef = DefaultEmbeddingFunction()
 
-    # Clean up any leftover persistent store
-    if os.path.exists(CHROMA_DIR):
-        try:
-            shutil.rmtree(CHROMA_DIR)
-        except Exception:
-            pass
-
-    # Build collection directly with chromadb
     collection = chroma_client.create_collection(
         name               = collection_name,
         embedding_function = ef,
