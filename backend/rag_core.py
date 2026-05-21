@@ -69,16 +69,39 @@ def load_and_split_multiple_pdfs(pdf_files, chunk_size=1000, chunk_overlap=200):
 
 # ── 2. Vector Store ────────────────────────────────────────────────────────────
 def build_vectorstore(chunks, collection_name="pdf_collection"):
+    """
+    Lightweight vector store using chromadb with a simple hash-based
+    embedding function — no onnxruntime, no torch, no ML libs needed.
+    """
     import chromadb as _chromadb
-    from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
+    import hashlib
+    import math
+
+    # Simple TF-IDF style embedding — no external dependencies
+    class LightweightEmbedding:
+        def __call__(self, input):
+            results = []
+            for text in input:
+                # Create a 64-dim embedding from character n-grams
+                vec = [0.0] * 64
+                text_lower = text.lower()
+                for i in range(len(text_lower) - 2):
+                    ngram = text_lower[i:i+3]
+                    h = int(hashlib.md5(ngram.encode()).hexdigest(), 16)
+                    vec[h % 64] += 1.0
+                # Normalize
+                norm = math.sqrt(sum(x*x for x in vec)) or 1.0
+                vec = [x / norm for x in vec]
+                results.append(vec)
+            return results
 
     chroma_client = _chromadb.EphemeralClient()
-    ef = DefaultEmbeddingFunction()
+    ef = LightweightEmbedding()
 
-    # get_or_create then wipe existing docs for a fresh start
     collection = chroma_client.get_or_create_collection(
         name               = collection_name,
         embedding_function = ef,
+        metadata           = {"hnsw:space": "cosine"},
     )
     existing = collection.get()
     if existing["ids"]:
