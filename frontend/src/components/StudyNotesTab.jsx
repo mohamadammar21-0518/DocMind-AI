@@ -2,6 +2,7 @@ import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import toast from 'react-hot-toast'
 import { getStudyNotes } from '../api'
+import ExportButton from './ExportButton'
 
 const FEATURES = [
   { icon: '📖', label: 'Sections',        color: '#667eea' },
@@ -76,9 +77,7 @@ export default function StudyNotesTab({ session }) {
             <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '20px', padding: '2rem', marginBottom: '1rem' }}>
               <div className="markdown"><ReactMarkdown>{notes}</ReactMarkdown></div>
             </div>
-            <button onClick={download} className="btn-ghost" style={{ padding: '0.6rem 1.5rem', fontSize: '0.85rem', borderRadius: '10px' }}>
-              ⬇️ Download Study Notes (.md)
-            </button>
+            <ExportButton content={notes} filename="docmind_study_notes" label="Export Notes" />
           </div>
         )}
       </div>

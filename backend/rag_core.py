@@ -249,6 +249,18 @@ def build_qa_chain(vectorstore, chunks, groq_api_key, model_name="llama-3.1-8b-i
     }
 
 
+def _confidence_score(docs):
+    """
+    Simple 1-5 confidence score based on number of relevant chunks retrieved.
+    5 = 4+ chunks found, 1 = 0 chunks found.
+    """
+    n = len(docs)
+    if n >= 4: return 5
+    if n == 3: return 4
+    if n == 2: return 3
+    if n == 1: return 2
+    return 1
+
 # ── 5. Ask ────────────────────────────────────────────────────────────────────
 def ask(chain_dict, question, chat_history):
     import time
@@ -285,7 +297,7 @@ def ask(chain_dict, question, chat_history):
             "source_file": doc.metadata.get("source_file", ""),
         })
 
-    return {"answer": answer, "sources": sources}
+    return {"answer": answer, "sources": sources, "confidence": _confidence_score(top_docs)}
 
 
 # ── 6. Map-Reduce Summarization ───────────────────────────────────────────────

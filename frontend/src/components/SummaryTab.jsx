@@ -2,6 +2,7 @@ import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import toast from 'react-hot-toast'
 import { getSummary } from '../api'
+import ExportButton from './ExportButton'
 
 export default function SummaryTab({ session }) {
   const [summary, setSummary] = useState('')
@@ -61,9 +62,7 @@ export default function SummaryTab({ session }) {
             <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '20px', padding: '2rem', marginBottom: '1rem' }}>
               <div className="markdown"><ReactMarkdown>{summary}</ReactMarkdown></div>
             </div>
-            <button onClick={download} className="btn-ghost" style={{ padding: '0.6rem 1.5rem', fontSize: '0.85rem', borderRadius: '10px' }}>
-              ⬇️ Download Summary (.md)
-            </button>
+            <ExportButton content={summary} filename="docmind_summary" label="Export Summary" />
           </div>
         )}
       </div>

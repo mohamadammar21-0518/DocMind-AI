@@ -3,6 +3,7 @@ import { useDropzone } from 'react-dropzone'
 import toast from 'react-hot-toast'
 import { Bot, Settings, Upload, FileText, Zap, CheckCircle } from 'lucide-react'
 import { uploadPDFs, clearSession } from '../api'
+import DocumentHistory, { saveToHistory } from './DocumentHistory'
 
 const MODELS = ['Llama 3.1 8B (Fast)', 'Llama 3.3 70B (Best Quality)', 'Gemma 2 9B']
 
@@ -31,6 +32,7 @@ export default function Sidebar({ session, onUploaded }) {
     try {
       const res = await uploadPDFs(fd)
       toast.success(res.data.message)
+      saveToHistory(res.data.pdf_names, res.data.num_pages, res.data.num_chunks)
       setFiles([])
       onUploaded()
     } catch (e) {
@@ -135,6 +137,8 @@ export default function Sidebar({ session, onUploaded }) {
             ? <><span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> Processing...</>
             : <><Zap size={15} /> Process Documents</>}
         </button>
+
+        <DocumentHistory />
 
         {/* Session stats */}
         {session.loaded && (

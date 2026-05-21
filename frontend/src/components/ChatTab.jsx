@@ -58,7 +58,7 @@ export default function ChatTab({ session, chatHistory, setChatHistory }) {
           // Done
           setChatHistory(prev => {
             const updated = [...prev]
-            updated[botMsgIndex] = { ...updated[botMsgIndex], sources, streaming: false }
+            updated[botMsgIndex] = { ...updated[botMsgIndex], sources, streaming: false, confidence: Math.min(5, Math.max(1, sources.length + 1)) }
             return updated
           })
           setLoading(false)
@@ -194,6 +194,11 @@ function MessageBubble({ msg }) {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', marginTop: '0.3rem', justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
           <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{msg.time}</span>
+          {!isUser && msg.confidence && (
+            <span style={{ fontSize: '0.68rem', color: msg.confidence >= 4 ? '#43e97b' : msg.confidence >= 3 ? '#f6d365' : '#fc8181', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+              {'★'.repeat(msg.confidence)}{'☆'.repeat(5 - msg.confidence)} confidence
+            </span>
+          )}
           {msg.sources?.length > 0 && (
             <button onClick={() => setShowSources(!showSources)} style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '0.72rem', cursor: 'pointer', padding: 0, fontFamily: 'Inter,sans-serif', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
               <span style={{ transition: 'transform 0.2s', display: 'inline-block', transform: showSources ? 'rotate(90deg)' : '' }}>▶</span>
