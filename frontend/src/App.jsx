@@ -22,13 +22,33 @@ export default function App() {
   const [page,         setPage]         = useState('landing')
   const [activeTab,    setActiveTab]    = useState('chat')
   const [session,      setSession]      = useState({ loaded: false, pdf_names: [], num_pages: 0, num_chunks: 0 })
-  const [chatHistory,  setChatHistory]  = useState([])
+  const [chatHistory,  setChatHistory]  = useState(() => {
+    try {
+      const saved = localStorage.getItem('docmind_chat')
+      return saved ? JSON.parse(saved) : []
+    } catch { return [] }
+  })
   const [sidebarOpen,  setSidebarOpen]  = useState(!isMobile())
   const [mobile,       setMobile]       = useState(isMobile())
+  const [theme,        setTheme]        = useState(() =>
+    localStorage.getItem('docmind_theme') || 'dark'
+  )
+
+  // Apply theme to root
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('docmind_theme', theme)
+  }, [theme])
 
   const refreshSession = async () => {
     try { const r = await getSession(); setSession(r.data) } catch {}
   }
+
+  // Persist chat history to localStorage
+  useEffect(() => {
+    try { localStorage.setItem('docmind_chat', JSON.stringify(chatHistory)) }
+    catch {}
+  }, [chatHistory])
 
   useEffect(() => { refreshSession() }, [])
 
@@ -156,6 +176,17 @@ export default function App() {
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>No document loaded</span>
             )}
           </div>
+
+          {/* Theme toggle */}
+          <button onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} style={{
+            background: 'var(--bg-glass)', border: '1px solid var(--border)',
+            borderRadius: '8px', width: '34px', height: '34px',
+            color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1rem',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'all 0.2s', flexShrink: 0,
+          }} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
 
           {/* Tabs */}
           <div className="topbar-tabs" style={{ display: 'flex', gap: '0.1rem', flexShrink: 0, marginLeft: 'auto' }}>

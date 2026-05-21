@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import toast from 'react-hot-toast'
-import { sendChat, getSuggestedQuestions } from '../api'
+import { sendChat, streamChat, getSuggestedQuestions } from '../api'
 
 export default function ChatTab({ session, chatHistory, setChatHistory }) {
   const [input,      setInput]      = useState('')
@@ -36,11 +36,47 @@ export default function ChatTab({ session, chatHistory, setChatHistory }) {
 
     setLoading(true)
     try {
-      const res = await sendChat({ question: q, chat_history: chatHistory })
-      setChatHistory([...newHistory, { role: 'bot', content: res.data.answer, sources: res.data.sources, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }])
+      // Add empty bot message that will be filled by streaming
+      const botMsgIndex = newHistory.length
+      setChatHistory([...newHistory, { role: 'bot', content: '', sources: [], time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), streaming: true }])
+
+      let fullText = ''
+      let sources  = []
+
+      const cancel = streamChat(
+        { question: q, chat_history: chatHistory },
+        (token) => {
+          fullText += token
+          setChatHistory(prev => {
+            const updated = [...prev]
+            updated[botMsgIndex] = { ...updated[botMsgIndex], content: fullText }
+            return updated
+          })
+        },
+        (srcs) => { sources = srcs },
+        () => {
+          // Done
+          setChatHistory(prev => {
+            const updated = [...prev]
+            updated[botMsgIndex] = { ...updated[botMsgIndex], sources, streaming: false }
+            return updated
+          })
+          setLoading(false)
+          setTimeout(() => inputRef.current?.focus(), 100)
+        },
+        (err) => {
+          setChatHistory(prev => {
+            const updated = [...prev]
+            updated[botMsgIndex] = { role: 'bot', content: `⚠️ ${err}`, sources: [], streaming: false, time: '' }
+            return updated
+          })
+          setLoading(false)
+        }
+      )
     } catch (e) {
-      setChatHistory([...newHistory, { role: 'bot', content: `⚠️ ${e.response?.data?.detail || e.message}`, sources: [], time: '' }])
-    } finally { setLoading(false); setTimeout(() => inputRef.current?.focus(), 100) }
+      setChatHistory([...newHistory, { role: 'bot', content: `⚠️ ${e.message}`, sources: [], time: '' }])
+      setLoading(false)
+    }
   }
 
   const handleSuggest = async () => {

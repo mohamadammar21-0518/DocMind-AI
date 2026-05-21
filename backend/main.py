@@ -10,6 +10,7 @@ import uuid
 import tempfile
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional
 from rag_core import (
@@ -161,6 +162,48 @@ def chat(req: ChatRequest):
         return ask(sess["qa_chain"], req.question, req.chat_history)
     except Exception as e:
         raise HTTPException(500, str(e))
+
+@app.post("/chat/stream")
+async def chat_stream(req: ChatRequest):
+    """Streaming chat endpoint using Server-Sent Events."""
+    sess = get_session(req.session_id)
+    if not sess["qa_chain"]:
+        raise HTTPException(400, "No document loaded.")
+
+    import json
+    from langchain_core.messages import HumanMessage, AIMessage
+
+    chain_dict   = sess["qa_chain"]
+    chain        = chain_dict["chain"]
+    retriever    = chain_dict["retriever"]
+
+    messages = []
+    for msg in req.chat_history:
+        if msg.get("role") == "user":
+            messages.append(HumanMessage(content=msg["content"]))
+        elif msg.get("role") == "bot":
+            messages.append(AIMessage(content=msg["content"]))
+
+    # Get sources first
+    from rag_core import rerank_documents
+    raw_docs = retriever.invoke(req.question)
+    top_docs = rerank_documents(req.question, raw_docs, top_k=4)
+    sources  = [{"page": d.metadata.get("page", 0)+1, "snippet": d.page_content[:300], "source_file": d.metadata.get("source_file","")} for d in top_docs]
+
+    async def generate():
+        try:
+            # Send sources first
+            yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
+            # Stream the answer
+            async for chunk in chain.astream({"question": req.question, "chat_history": messages}):
+                if chunk:
+                    yield f"data: {json.dumps({'type': 'token', 'token': chunk})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 @app.post("/summarize")
 def summarize(req: SessionRequest):
