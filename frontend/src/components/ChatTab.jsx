@@ -133,7 +133,8 @@ export default function ChatTab({ session, chatHistory, setChatHistory }) {
       )}
 
       {/* Messages */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '2rem 1.5rem' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ maxWidth: '720px', width: '100%', margin: '0 auto', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: chatHistory.length === 0 ? 'center' : 'flex-start' }}>
         {chatHistory.length === 0 ? (
           <EmptyState loaded={session.loaded} />
         ) : (
@@ -145,25 +146,58 @@ export default function ChatTab({ session, chatHistory, setChatHistory }) {
           </>
         )}
         <div ref={bottomRef} />
+        </div>
       </div>
 
       {/* Input */}
-      <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--border)', flexShrink: 0, background: 'rgba(13,13,26,0.8)', backdropFilter: 'blur(20px)' }}>
-        <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'flex-end', background: 'var(--bg-glass)', border: '1px solid var(--border)', borderRadius: '16px', padding: '0.6rem 0.6rem 0.6rem 1rem', transition: 'border-color 0.3s' }}
-          onFocusCapture={e => e.currentTarget.style.borderColor = 'var(--border-accent)'}
-          onBlurCapture={e => e.currentTarget.style.borderColor = 'var(--border)'}>
-          <input ref={inputRef} value={input} onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), sendMessage(input))}
-            placeholder={session.loaded ? 'Ask anything about your document...' : 'Ask me anything — or upload a PDF to get started...'}
-            disabled={false}
-            style={{ flex: 1, background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: '0.92rem', outline: 'none', fontFamily: 'Inter,sans-serif', resize: 'none', lineHeight: 1.5 }} />
-          <button onClick={() => sendMessage(input)} disabled={loading || !input.trim()}
-            className="btn-primary" style={{ padding: '0.6rem 1rem', borderRadius: '10px', fontSize: '1rem', flexShrink: 0 }}>
-            {loading ? <Spinner /> : '➤'}
-          </button>
-        </div>
-        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '0.5rem' }}>
-          Press Enter to send · Powered by Groq Llama 3
+      <div style={{ padding: '1rem 1.5rem 1.2rem', borderTop: '1px solid var(--border)', flexShrink: 0, background: 'var(--bg-primary)' }}>
+        <div style={{ maxWidth: '720px', margin: '0 auto' }}>
+          <div style={{
+            display: 'flex', alignItems: 'flex-end', gap: '0',
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border)',
+            borderRadius: '16px',
+            padding: '0.5rem 0.5rem 0.5rem 1.2rem',
+            transition: 'border-color 0.2s, box-shadow 0.2s',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.2)',
+          }}
+            onFocusCapture={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(102,126,234,0.12)' }}
+            onBlurCapture={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.2)' }}>
+            <input
+              ref={inputRef}
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), sendMessage(input))}
+              placeholder={session.loaded ? 'Ask anything about your document...' : 'Ask me anything — or upload a PDF to get started...'}
+              style={{
+                flex: 1, background: 'none', border: 'none',
+                color: 'var(--text-primary)', fontSize: '0.95rem',
+                outline: 'none', fontFamily: 'Inter,sans-serif',
+                lineHeight: 1.5, padding: '0.4rem 0',
+                resize: 'none',
+              }}
+            />
+            <button
+              onClick={() => sendMessage(input)}
+              disabled={loading || !input.trim()}
+              style={{
+                background: input.trim() && !loading ? 'var(--accent)' : 'var(--bg-glass)',
+                border: 'none', borderRadius: '10px',
+                width: '38px', height: '38px', flexShrink: 0,
+                color: input.trim() && !loading ? 'white' : 'var(--text-muted)',
+                cursor: loading || !input.trim() ? 'not-allowed' : 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.2s',
+                fontSize: '1rem',
+              }}>
+              {loading
+                ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} />
+                : '➤'}
+            </button>
+          </div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '0.5rem' }}>
+            Press Enter to send · Powered by Groq Llama 3
+          </div>
         </div>
       </div>
     </div>
