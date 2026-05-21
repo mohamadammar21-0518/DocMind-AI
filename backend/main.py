@@ -79,8 +79,8 @@ async def upload_pdfs(
     files        : List[UploadFile] = File(...),
     groq_api_key : str = Form(default=""),
     model_label  : str = Form("Llama 3.1 8B (Fast)"),
-    chunk_size   : int = Form(1000),
-    chunk_overlap: int = Form(200),
+    chunk_size   : int = Form(800),
+    chunk_overlap: int = Form(100),
     session_id   : str = Form(default=""),
 ):
     if not files:

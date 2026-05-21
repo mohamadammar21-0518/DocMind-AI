@@ -31,37 +31,46 @@ export default function ExportButton({ content, filename, label = 'Export' }) {
   }
 
   const exportPDF = () => {
-    // Open print dialog with formatted content
-    const win = window.open('', '_blank')
-    win.document.write(`
-      <html>
-        <head>
-          <title>${filename}</title>
-          <style>
-            body { font-family: Georgia, serif; max-width: 800px; margin: 2rem auto; line-height: 1.7; color: #1a1a1a; }
-            h1 { font-size: 1.8rem; border-bottom: 2px solid #667eea; padding-bottom: 0.5rem; color: #1a1a1a; }
-            h2 { font-size: 1.3rem; color: #333; margin-top: 1.5rem; }
-            h3 { font-size: 1.1rem; color: #555; }
-            table { border-collapse: collapse; width: 100%; }
-            th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; }
-            th { background: #f0f0f0; }
-            code { background: #f5f5f5; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.9em; }
-            pre { background: #f5f5f5; padding: 1rem; border-radius: 6px; overflow-x: auto; }
-            blockquote { border-left: 3px solid #667eea; padding-left: 1rem; color: #555; }
-            @media print { body { margin: 1rem; } }
-          </style>
-        </head>
-        <body>
-          <div id="content"></div>
-          <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-          <script>
-            document.getElementById('content').innerHTML = marked.parse(${JSON.stringify(content)});
-            setTimeout(() => window.print(), 500);
-          </script>
-        </body>
-      </html>
-    `)
-    win.document.close()
+    // Instant print — no CDN needed, uses browser's built-in print
+    const printWindow = window.open('', '_blank')
+    // Convert basic markdown to HTML inline
+    const html = content
+      .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+      .replace(/^## (.*$)/gm, '<h2>$1</h2>')
+      .replace(/^### (.*$)/gm, '<h3>$1</h3>')
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/`(.*?)`/g, '<code>$1</code>')
+      .replace(/^- (.*$)/gm, '<li>$1</li>')
+      .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')
+      .replace(/^\d+\. (.*$)/gm, '<li>$1</li>')
+      .replace(/\n\n/g, '</p><p>')
+      .replace(/^(?!<[h|u|l|p])/gm, '<p>')
+      .replace(/\|(.+)\|/g, (match) => {
+        const cells = match.split('|').filter(c => c.trim())
+        return '<tr>' + cells.map(c => `<td>${c.trim()}</td>`).join('') + '</tr>'
+      })
+
+    printWindow.document.write(`<!DOCTYPE html><html><head>
+      <title>${filename}</title>
+      <style>
+        body{font-family:Georgia,serif;max-width:800px;margin:2rem auto;line-height:1.7;color:#1a1a1a;font-size:14px}
+        h1{font-size:1.8rem;border-bottom:2px solid #667eea;padding-bottom:.5rem;color:#1a1a1a;margin-top:1.5rem}
+        h2{font-size:1.3rem;color:#333;margin-top:1.5rem}
+        h3{font-size:1.1rem;color:#555;margin-top:1rem}
+        table{border-collapse:collapse;width:100%;margin:1rem 0}
+        td,th{border:1px solid #ddd;padding:.5rem;text-align:left}
+        th{background:#f0f0f0;font-weight:600}
+        code{background:#f5f5f5;padding:.1rem .3rem;border-radius:3px;font-size:.9em;font-family:monospace}
+        ul,ol{padding-left:1.5rem}
+        li{margin:.3rem 0}
+        strong{font-weight:700}
+        @media print{body{margin:1rem}}
+      </style>
+    </head><body>${html}</body></html>`)
+    printWindow.document.close()
+    printWindow.focus()
+    setTimeout(() => { printWindow.print(); printWindow.close() }, 300)
     setOpen(false)
   }
 

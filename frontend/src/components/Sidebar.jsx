@@ -13,6 +13,7 @@ export default function Sidebar({ session, onUploaded }) {
   const [chunkOverlap, setChunkOverlap] = useState(200)
   const [files,        setFiles]        = useState([])
   const [loading,      setLoading]      = useState(false)
+  const [loadingStep,  setLoadingStep]  = useState('')
   const [showSettings, setShowSettings] = useState(false)
 
   const onDrop = useCallback(a => setFiles(p => [...p, ...a]), [])
@@ -23,19 +24,32 @@ export default function Sidebar({ session, onUploaded }) {
   const handleUpload = async () => {
     if (!files.length) return toast.error('Upload at least one PDF')
     setLoading(true)
+    setLoadingStep('Reading PDF...')
     const fd = new FormData()
     files.forEach(f => fd.append('files', f))
-    fd.append('groq_api_key', '')   // backend uses env var
+    fd.append('groq_api_key', '')
     fd.append('model_label',  model)
     fd.append('chunk_size',   chunkSize)
     fd.append('chunk_overlap',chunkOverlap)
+
+    // Simulate progress steps
+    const steps = ['Reading PDF...', 'Chunking text...', 'Building index...', 'Almost done...']
+    let stepIdx = 0
+    const stepTimer = setInterval(() => {
+      stepIdx = Math.min(stepIdx + 1, steps.length - 1)
+      setLoadingStep(steps[stepIdx])
+    }, 3000)
+
     try {
       const res = await uploadPDFs(fd)
+      clearInterval(stepTimer)
+      setLoadingStep('Done!')
       toast.success(res.data.message)
       saveToHistory(res.data.pdf_names, res.data.num_pages, res.data.num_chunks)
       setFiles([])
       onUploaded()
     } catch (e) {
+      clearInterval(stepTimer)
       const msg = e.response?.data?.detail || 'Upload failed'
       if (e.response?.status === 413) {
         toast.error(msg, { duration: 6000 })
@@ -43,7 +57,7 @@ export default function Sidebar({ session, onUploaded }) {
         toast.error(msg)
       }
     }
-    finally { setLoading(false) }
+    finally { setLoading(false); setLoadingStep('') }
   }
 
   const handleClear = async () => {
@@ -134,7 +148,7 @@ export default function Sidebar({ session, onUploaded }) {
         <button onClick={handleUpload} disabled={loading} className="btn-primary"
           style={{ width: '100%', marginTop: '0.8rem', padding: '0.75rem', fontSize: '0.9rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
           {loading
-            ? <><span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> Processing...</>
+            ? <><span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> {loadingStep || 'Processing...'}</>
             : <><Zap size={15} /> Process Documents</>}
         </button>
 
