@@ -37,7 +37,37 @@ from langchain_classic.retrievers import EnsembleRetriever
 load_dotenv()
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-CHROMA_DIR      = "chroma_db"
+CHROMA_DIR      = os.getenv("CHROMA_PERSIST_DIR", "/data/chroma_db")
+
+# ── Storage health ────────────────────────────────────────────────────────────
+# Set to True at import time if PersistentClient cannot initialise.
+# All /upload and /chat handlers must check this flag before proceeding.
+STORAGE_UNAVAILABLE: bool = False
+STORAGE_UNAVAILABLE_REASON: str = ""
+
+
+def check_storage_health() -> None:
+    """
+    Verify that ChromaDB's PersistentClient can open/create the data directory.
+
+    Called once at module import. On failure sets STORAGE_UNAVAILABLE = True
+    and logs the storage path plus the error reason so operators can diagnose
+    mount / permission problems without inspecting a stack trace.
+    """
+    global STORAGE_UNAVAILABLE, STORAGE_UNAVAILABLE_REASON
+    import chromadb as _chromadb
+    try:
+        _chromadb.PersistentClient(path=CHROMA_DIR)
+        print(f"[RAG] Storage health OK — chroma path: {CHROMA_DIR}")
+    except Exception as exc:
+        reason = f"{type(exc).__name__}: {exc}"
+        STORAGE_UNAVAILABLE = True
+        STORAGE_UNAVAILABLE_REASON = reason
+        print(f"[RAG] Storage UNAVAILABLE — path: {CHROMA_DIR} — reason: {reason}")
+
+
+# Run the check immediately when the module is imported.
+check_storage_health()
 
 # Real semantic embedding model (384-dim). Used by both the vector store and
 # RAGAS evaluation. Defining it here fixes a previously-undefined NameError in
@@ -74,17 +104,21 @@ class LightweightEmbedding:
 _embeddings_cache = {"real": None, "fallback": None}
 
 
-def get_embeddings():
+def get_embeddings() -> tuple:
     """
-    Return an embedding function suitable for ChromaDB.
+    Return a ``(embedding_function, is_fallback: bool)`` tuple.
+
+    ``is_fallback`` is ``True`` when ``LightweightEmbedding`` is active and
+    ``False`` when the real ``all-MiniLM-L6-v2`` model is used.
 
     Resolution order:
       1. If USE_LOCAL_MODELS == "false" (env), go straight to the fallback.
          Useful to force the lightweight path on memory-constrained deploys.
       2. Try to lazily import sentence-transformers via langchain_huggingface.
-         On success, return a real HuggingFaceEmbeddings (cached).
+         On success, return ``(HuggingFaceEmbeddings, False)`` (cached).
       3. On any ImportError / load failure, warn and fall back to
-         LightweightEmbedding (cached). The app keeps working, just less smart.
+         ``(LightweightEmbedding, True)`` (cached). The app keeps working, just
+         less semantically accurate — never a hard crash (Req 3.6).
 
     This mirrors the existing RAGAS pattern: real when available, graceful
     degradation otherwise — never a hard crash.
@@ -95,29 +129,87 @@ def get_embeddings():
         if _embeddings_cache["fallback"] is None:
             print("[RAG] USE_LOCAL_MODELS=false → using LightweightEmbedding")
             _embeddings_cache["fallback"] = LightweightEmbedding()
-        return _embeddings_cache["fallback"]
+        return (_embeddings_cache["fallback"], True)
 
     if _embeddings_cache["real"] is not None:
-        return _embeddings_cache["real"]
+        return (_embeddings_cache["real"], False)
 
     try:
         from langchain_huggingface import HuggingFaceEmbeddings
         print(f"[RAG] Loading real embeddings: {EMBEDDING_MODEL} ...")
         _embeddings_cache["real"] = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
         print("[RAG] Real embeddings ready (sentence-transformers)")
-        return _embeddings_cache["real"]
+        return (_embeddings_cache["real"], False)
     except Exception as e:
         print(f"[RAG] Real embeddings unavailable ({type(e).__name__}: {e}). "
               f"Falling back to LightweightEmbedding.")
         if _embeddings_cache["fallback"] is None:
             _embeddings_cache["fallback"] = LightweightEmbedding()
-        return _embeddings_cache["fallback"]
+        return (_embeddings_cache["fallback"], True)
 
 GROQ_MODELS = {
     "Llama 3.1 8B (Fast)"         : "llama-3.1-8b-instant",
     "Llama 3.3 70B (Best Quality)": "llama-3.3-70b-versatile",
     "Gemma 2 9B"                  : "gemma2-9b-it",
 }
+
+
+# ── Cross-Encoder Reranker ────────────────────────────────────────────────────
+class CrossEncoderReranker:
+    """
+    Local neural reranker using cross-encoder/ms-marco-MiniLM-L-6-v2.
+
+    Scores query–document pairs without any external API call.  On load
+    failure the instance marks itself unavailable (`self._available = False`)
+    and `score()` returns documents unchanged so the pipeline degrades
+    gracefully (Req 4.5).
+    """
+    MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
+    def __init__(self):
+        self._available = False
+        self._model = None
+        try:
+            from sentence_transformers import CrossEncoder
+            self._model = CrossEncoder(self.MODEL)
+            self._available = True
+            print(f"[RAG] CrossEncoderReranker loaded: {self.MODEL}")
+        except Exception as exc:
+            print(
+                f"[RAG] WARNING: CrossEncoderReranker failed to load "
+                f"({type(exc).__name__}: {exc}). "
+                f"Will fall back to LLM reranker."
+            )
+
+    def score(self, query: str, docs: list) -> list:
+        """
+        Score query–chunk pairs and return docs sorted by descending score.
+
+        Each returned document has ``metadata["rerank_score"]`` set to a
+        float in the 0–10 range (min-max scaled across the batch).
+
+        If the model is unavailable or *docs* is empty, docs are returned
+        unchanged.
+        """
+        if not self._available or not docs:
+            return docs
+
+        pairs = [(query, doc.page_content) for doc in docs]
+        raw_scores = self._model.predict(pairs)  # numpy array of raw logits
+
+        # Min-max normalise to 0–10 across the batch.
+        min_s = float(raw_scores.min())
+        max_s = float(raw_scores.max())
+        scores_0_10 = (raw_scores - min_s) / (max_s - min_s + 1e-8) * 10
+
+        for i, doc in enumerate(docs):
+            doc.metadata["rerank_score"] = float(scores_0_10[i])
+
+        return sorted(docs, key=lambda d: d.metadata["rerank_score"], reverse=True)
+
+
+# Module-level singleton — lazily initialised on first use (task 6.2).
+_cross_encoder_reranker: "CrossEncoderReranker | None" = None
 
 
 # ── 1. PDF Loading ─────────────────────────────────────────────────────────────
@@ -146,20 +238,36 @@ def load_and_split_multiple_pdfs(pdf_files, chunk_size=1000, chunk_overlap=200):
 
 
 # ── 2. Vector Store ────────────────────────────────────────────────────────────
-def build_vectorstore(chunks, collection_name="pdf_collection"):
+def build_vectorstore(chunks, session_id: str = "default", collection_name: str = None):
     """
-    Build an in-memory ChromaDB vector store over the given chunks.
+    Build a persistent ChromaDB vector store over the given chunks.
 
     Uses real semantic embeddings (all-MiniLM-L6-v2) when available, and
     transparently falls back to the hash-based LightweightEmbedding when the
     real model can't be loaded (e.g. on the 512MB free tier). Either way the
     returned object exposes the same .similarity_search() / .get() interface.
+
+    Parameters
+    ----------
+    chunks        : list[Document]  — text chunks to index
+    session_id    : str             — per-user namespace; collection is f"pdf_{session_id}"
+    collection_name: str | None     — override the derived collection name (legacy callers)
+
+    Returns
+    -------
+    dict with keys:
+        "store"       : SimpleVectorStore instance
+        "is_fallback" : bool — True when LightweightEmbedding was used
     """
     import chromadb as _chromadb
 
-    ef = get_embeddings()
+    ef, is_fallback = get_embeddings()
 
-    chroma_client = _chromadb.EphemeralClient()
+    # Derive collection name from session_id unless caller overrides it.
+    if collection_name is None:
+        collection_name = f"pdf_{session_id}"
+
+    chroma_client = _chromadb.PersistentClient(path=CHROMA_DIR)
 
     # ChromaDB expects an embedding_function that is __call__(input) -> list[list[float]].
     # - HuggingFaceEmbeddings is NOT callable; it exposes .embed_documents(list[str]).
@@ -203,7 +311,7 @@ def build_vectorstore(chunks, collection_name="pdf_collection"):
             ids       = ids[i:i+batch],
         )
 
-    mode = "semantic (MiniLM)" if _embeddings_cache["real"] is ef else "lightweight (hash)"
+    mode = "lightweight (hash)" if is_fallback else "semantic (MiniLM)"
     print(f"[RAG] Vector store built with {len(chunks)} chunks — embeddings: {mode}")
 
     class SimpleVectorStore:
@@ -220,7 +328,7 @@ def build_vectorstore(chunks, collection_name="pdf_collection"):
             all_docs = self.col.get()
             return {"documents": all_docs["documents"], "metadatas": all_docs["metadatas"]}
 
-    return SimpleVectorStore(collection)
+    return {"store": SimpleVectorStore(collection), "is_fallback": is_fallback}
 
 
 # ── 3. Hybrid Retriever (BM25 + Vector + Reranker) ────────────────────────────
