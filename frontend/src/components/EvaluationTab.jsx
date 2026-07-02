@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { runEvaluation } from '../api'
+import { BarChart2, ShieldCheck, CheckCircle2, Award, Clipboard, Download, HelpCircle } from 'lucide-react'
 
 const METRICS = [
-  { key: 'faithfulness',      icon: '🎯', label: 'Faithfulness',      desc: 'Answer grounded in document — no hallucination' },
-  { key: 'answer_relevancy',  icon: '💬', label: 'Answer Relevancy',  desc: 'Answer addresses the question asked' },
-  { key: 'context_precision', icon: '🔍', label: 'Context Precision', desc: 'Retrieved chunks are relevant to the question' },
+  { key: 'faithfulness',      icon: ShieldCheck, label: 'Faithfulness',      desc: 'Measures if the answer is strictly grounded in the document source context, preventing hallucinations.' },
+  { key: 'answer_relevancy',  icon: CheckCircle2, label: 'Answer Relevancy',  desc: 'Measures how well the generated answer directly addresses the user query.' },
+  { key: 'context_precision', icon: BarChart2, label: 'Context Precision', desc: 'Measures if the retrieved document chunks are accurate and precise to the question.' },
 ]
 
 export default function EvaluationTab({ session }) {
@@ -21,12 +22,24 @@ export default function EvaluationTab({ session }) {
     try {
       const res = await runEvaluation(qs)
       setResults(res.data)
-    } catch (e) { toast.error(e.response?.data?.detail || 'Evaluation failed') }
-    finally { setLoading(false) }
+    } catch (e) { 
+      toast.error(e.response?.data?.detail || 'Evaluation failed') 
+    } finally { 
+      setLoading(false) 
+    }
   }
 
-  const scoreColor = (s) => s >= 0.8 ? '#48bb78' : s >= 0.6 ? '#ecc94b' : '#fc8181'
-  const scoreBadge = (s) => s >= 0.8 ? '🟢' : s >= 0.6 ? '🟡' : '🔴'
+  useEffect(() => {
+    const handleRun = () => {
+      run()
+    }
+
+    window.addEventListener('docmind_run_evaluation', handleRun)
+    return () => window.removeEventListener('docmind_run_evaluation', handleRun)
+  }, [session.loaded, questions])
+
+  const scoreColor = (s) => s >= 0.8 ? 'var(--success)' : s >= 0.6 ? 'var(--warning)' : 'var(--danger)'
+  const scoreBadgeColor = (s) => s >= 0.8 ? 'badge-success' : s >= 0.6 ? 'badge-warning' : 'badge-danger'
 
   const downloadCSV = () => {
     if (!results?.per_question) return
@@ -39,49 +52,68 @@ export default function EvaluationTab({ session }) {
   }
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: '2rem' }}>
-      <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-        <h2 style={{ color: '#e2e8f0', marginBottom: '0.4rem' }}>📊 RAG Evaluation</h2>
-        <p style={{ color: '#8892b0', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
-          Automatically scores your RAG pipeline using <strong style={{ color: '#667eea' }}>RAGAS</strong> metrics.
-        </p>
-
-        {/* Metric cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-          {METRICS.map(m => (
-            <div key={m.key} style={{
-              background: '#1e1e35', border: '1px solid #2d2d4e', borderRadius: '12px', padding: '1.2rem',
-            }}>
-              <div style={{ fontSize: '1.5rem' }}>{m.icon}</div>
-              <div style={{ fontWeight: 600, color: '#e2e8f0', margin: '0.4rem 0 0.2rem' }}>{m.label}</div>
-              <div style={{ fontSize: '0.78rem', color: '#8892b0' }}>{m.desc}</div>
-              {results && results[m.key] !== undefined && (
-                <div style={{ marginTop: '0.8rem' }}>
-                  <div style={{ fontSize: '1.8rem', fontWeight: 700, color: scoreColor(results[m.key]) }}>
-                    {results[m.key].toFixed(2)}
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: '#4a5568' }}>out of 1.0</div>
-                </div>
-              )}
-            </div>
-          ))}
+    <div className="detail-page" style={{ height: '100%', overflowY: 'auto', padding: 'clamp(1rem, 3vw, 2rem)' }}>
+      <div style={{ maxWidth: '840px', margin: '0 auto' }}>
+        
+        {/* Header */}
+        <div style={{ marginBottom: '2rem' }}>
+          <div style={{ fontSize: '0.68rem', color: 'var(--accent)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '0.4rem' }}>
+            RAG Pipeline Diagnosis
+          </div>
+          <h2 className="panel-heading" style={{ fontSize: '1.6rem', fontWeight: 800, marginBottom: '0.5rem', letterSpacing: '-0.5px' }}>
+            RAGAS Quality Evaluation
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.84rem', lineHeight: 1.6 }}>
+            Run real-time automated diagnostic evaluations on your document search pipeline. DocMind AI tests retrieval accuracy using metrics defined by the <strong style={{ color: 'var(--accent)' }}>RAGAS framework</strong>.
+          </p>
         </div>
 
-        {/* Overall score */}
+        {/* Diagnostic Metrics Row */}
+        <div className="detail-grid" style={{ marginBottom: '1.5rem' }}>
+          {METRICS.map(m => {
+            const hasScore = results && results[m.key] !== undefined
+            const score = hasScore ? results[m.key] : null
+            return (
+              <div key={m.key} className="glass-card feature-card" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <div style={{
+                    background: 'var(--accent-muted)', padding: '0.4rem', borderRadius: '8px', display: 'flex', color: 'var(--accent)'
+                  }}>
+                    <m.icon size={14} />
+                  </div>
+                  <div style={{ fontWeight: 600, fontSize: '0.8rem', color: 'var(--text-primary)' }}>{m.label}</div>
+                </div>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>{m.desc}</p>
+                {hasScore && (
+                  <div style={{ marginTop: '0.4rem' }}>
+                    <div style={{ fontSize: '1.6rem', fontWeight: 800, color: scoreColor(score), fontFamily: 'var(--font-display)' }}>
+                      {(score * 100).toFixed(0)}%
+                    </div>
+                    <div style={{ fontSize: '0.64rem', color: 'var(--text-tertiary)' }}>Ragas metric score</div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Global Evaluation score */}
         {results && !results.error && (() => {
           const overall = (results.faithfulness + results.answer_relevancy + results.context_precision) / 3
           return (
-            <div style={{ background: '#1e1e35', border: '1px solid #2d2d4e', borderRadius: '12px', padding: '1.2rem', marginBottom: '1.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
-                <span style={{ fontWeight: 600, color: '#e2e8f0' }}>Overall RAG Quality</span>
-                <span style={{ fontSize: '1.3rem', fontWeight: 700, color: scoreColor(overall) }}>
-                  {scoreBadge(overall)} {(overall * 100).toFixed(1)}%
+            <div className="glass-card surface-card-soft" style={{ padding: '1rem 1.2rem', background: 'var(--accent-muted)', border: '1px solid var(--border-accent)', marginBottom: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                  <Award size={14} style={{ color: 'var(--accent)' }} /> Pipeline Score
+                </span>
+                <span style={{ fontSize: '1rem', fontWeight: 800, color: scoreColor(overall), fontFamily: 'var(--font-display)' }}>
+                  {(overall * 100).toFixed(0)}%
                 </span>
               </div>
-              <div style={{ background: '#2d2d4e', borderRadius: '4px', height: '8px', overflow: 'hidden' }}>
+              <div style={{ background: 'var(--border)', borderRadius: '4px', height: '6px', overflow: 'hidden' }}>
                 <div style={{
                   height: '100%', width: `${overall * 100}%`,
-                  background: `linear-gradient(90deg, ${scoreColor(overall)}, #667eea)`,
+                  background: 'var(--gradient)',
                   borderRadius: '4px', transition: 'width 1s ease',
                 }} />
               </div>
@@ -89,67 +121,93 @@ export default function EvaluationTab({ session }) {
           )
         })()}
 
-        {/* Questions input */}
+        {/* Questions Area */}
         <div style={{ marginBottom: '1rem' }}>
-          <label style={{ fontSize: '0.78rem', color: '#8892b0', display: 'block', marginBottom: '0.4rem' }}>
-            Test questions (one per line):
+          <label style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.25rem', marginBottom: '0.4rem', fontWeight: 500 }}>
+            <Clipboard size={12} /> Test Queries (One per line)
           </label>
-          <textarea value={questions} onChange={e => setQuestions(e.target.value)} rows={5} style={{
-            width: '100%', background: '#1e1e35', border: '1px solid #2d2d4e',
-            borderRadius: '10px', padding: '0.8rem', color: '#e2e8f0',
-            fontSize: '0.85rem', outline: 'none', fontFamily: 'Inter,sans-serif',
-            resize: 'vertical',
-          }} />
+          <textarea
+            value={questions}
+            onChange={e => setQuestions(e.target.value)}
+            rows={4}
+            className="input-field"
+            style={{
+              width: '100%',
+              padding: '0.6rem 0.8rem',
+              fontSize: '0.8rem',
+              fontFamily: 'var(--font-sans)',
+              resize: 'vertical',
+            }}
+          />
         </div>
 
-        <div style={{ display: 'flex', gap: '0.8rem', marginBottom: '1.5rem' }}>
-          <button onClick={run} disabled={loading} style={{
-            background: loading ? '#2d2d4e' : 'linear-gradient(135deg,#667eea,#764ba2)',
-            color: 'white', border: 'none', borderRadius: '10px',
-            padding: '0.7rem 1.5rem', fontWeight: 600, fontSize: '0.9rem',
-            cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'Inter,sans-serif',
-          }}>
-            {loading ? '⏳ Evaluating...' : '🧪 Run Evaluation'}
+        {/* Trigger Button & CSV export */}
+        <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '1.5rem' }}>
+          <button
+            onClick={run}
+            disabled={loading}
+            className="btn-primary"
+            style={{ padding: '0.6rem 1.4rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+          >
+            {loading ? (
+              <>
+                <span style={{ width: '12px', height: '12px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} />
+                <span>Running diagnostics...</span>
+              </>
+            ) : (
+              'Run Evaluation'
+            )}
           </button>
           {results && !results.error && (
-            <button onClick={downloadCSV} style={{
-              background: 'transparent', border: '1px solid #667eea', color: '#667eea',
-              borderRadius: '10px', padding: '0.7rem 1.2rem', cursor: 'pointer',
-              fontFamily: 'Inter,sans-serif', fontSize: '0.85rem',
-            }}>⬇️ Download Report</button>
+            <button
+              onClick={downloadCSV}
+              className="btn-subtle"
+              style={{ padding: '0.6rem 1.2rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+            >
+              <Download size={13} /> Export Report
+            </button>
           )}
         </div>
 
+        {/* Ragas dependency errors */}
         {results?.error && (
-          <div style={{ background: 'rgba(252,129,129,0.1)', border: '1px solid #fc8181', borderRadius: '10px', padding: '1rem', color: '#fc8181', fontSize: '0.85rem' }}>
-            ⚠️ {results.error}
+          <div className="glass-card" style={{ background: 'var(--danger-muted)', border: '1px solid rgba(248,113,113,0.2)', padding: '1rem', borderRadius: '10px', display: 'flex', gap: '0.5rem', alignItems: 'flex-start', color: 'var(--danger)', fontSize: '0.78rem' }}>
+            <HelpCircle size={14} style={{ flexShrink: 0, marginTop: '0.05rem' }} />
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: '0.2rem' }}>Dependency Warning</div>
+              {results.error}
+            </div>
           </div>
         )}
 
-        {/* Per-question table */}
+        {/* Breakdown details */}
         {results?.per_question?.length > 0 && (
-          <div>
-            <h3 style={{ color: '#e2e8f0', marginBottom: '0.8rem', fontSize: '1rem' }}>Per-Question Breakdown</h3>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+          <div style={{ marginTop: '1.5rem', animation: 'fadeInUp 0.3s ease' }}>
+            <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.6rem' }}>
+              Per-Question Quality Breakdown
+            </h3>
+            <div className="table-shell">
+              <table>
                 <thead>
-                  <tr style={{ background: '#1e1e35' }}>
-                    {['Question', 'Faithfulness', 'Answer Relevancy', 'Context Precision'].map(h => (
-                      <th key={h} style={{ padding: '0.6rem 0.8rem', textAlign: 'left', color: '#8892b0', borderBottom: '1px solid #2d2d4e', fontWeight: 500 }}>{h}</th>
+                  <tr>
+                    {['Question', 'Faithfulness', 'Relevancy', 'Precision'].map(h => (
+                      <th key={h} style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {results.per_question.map((row, i) => {
-                    const f = row.faithfulness ?? row['faithfulness'] ?? '-'
+                  {results.per_question.map((row, idx) => {
+                    const f = row.faithfulness ?? '-'
                     const a = row.answer_relevancy ?? '-'
                     const c = row.context_precision ?? '-'
                     return (
-                      <tr key={i} style={{ borderBottom: '1px solid #2d2d4e' }}>
-                        <td style={{ padding: '0.6rem 0.8rem', color: '#e2e8f0', maxWidth: '300px' }}>{row.user_input || row.question || '-'}</td>
+                      <tr key={idx}>
+                        <td style={{ color: 'var(--text-primary)', fontWeight: 500, maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {row.user_input || row.question || '-'}
+                        </td>
                         {[f, a, c].map((v, j) => (
-                          <td key={j} style={{ padding: '0.6rem 0.8rem', color: typeof v === 'number' ? scoreColor(v) : '#8892b0', fontWeight: 600 }}>
-                            {typeof v === 'number' ? `${scoreBadge(v)} ${v.toFixed(2)}` : v}
+                          <td key={j} style={{ color: typeof v === 'number' ? scoreColor(v) : 'var(--text-tertiary)', fontWeight: 600 }}>
+                            {typeof v === 'number' ? `${(v * 100).toFixed(0)}%` : v}
                           </td>
                         ))}
                       </tr>

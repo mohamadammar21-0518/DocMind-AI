@@ -1,7 +1,9 @@
 import { useState } from 'react'
-import { Download } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Download, ChevronDown, FileCode, FileText, Printer } from 'lucide-react'
+import { notifPop } from '../motion'
 
-export default function ExportButton({ content, filename, label = 'Export' }) {
+export default function ExportButton({ content, filename, label = 'Export Analysis' }) {
   const [open, setOpen] = useState(false)
 
   const exportMarkdown = () => {
@@ -14,7 +16,6 @@ export default function ExportButton({ content, filename, label = 'Export' }) {
   }
 
   const exportText = () => {
-    // Strip markdown for plain text
     const plain = content
       .replace(/#{1,6}\s/g, '')
       .replace(/\*\*(.*?)\*\*/g, '$1')
@@ -31,9 +32,7 @@ export default function ExportButton({ content, filename, label = 'Export' }) {
   }
 
   const exportPDF = () => {
-    // Instant print — no CDN needed, uses browser's built-in print
     const printWindow = window.open('', '_blank')
-    // Convert basic markdown to HTML inline
     const html = content
       .replace(/^# (.*$)/gm, '<h1>$1</h1>')
       .replace(/^## (.*$)/gm, '<h2>$1</h2>')
@@ -55,12 +54,12 @@ export default function ExportButton({ content, filename, label = 'Export' }) {
       <title>${filename}</title>
       <style>
         body{font-family:Georgia,serif;max-width:800px;margin:2rem auto;line-height:1.7;color:#1a1a1a;font-size:14px}
-        h1{font-size:1.8rem;border-bottom:2px solid #667eea;padding-bottom:.5rem;color:#1a1a1a;margin-top:1.5rem}
+        h1{font-size:1.8rem;border-bottom:2px solid #7877ff;padding-bottom:.5rem;color:#1a1a1a;margin-top:1.5rem}
         h2{font-size:1.3rem;color:#333;margin-top:1.5rem}
         h3{font-size:1.1rem;color:#555;margin-top:1rem}
         table{border-collapse:collapse;width:100%;margin:1rem 0}
         td,th{border:1px solid #ddd;padding:.5rem;text-align:left}
-        th{background:#f0f0f0;font-weight:600}
+        th{background:#f8f8ff;font-weight:600}
         code{background:#f5f5f5;padding:.1rem .3rem;border-radius:3px;font-size:.9em;font-family:monospace}
         ul,ol{padding-left:1.5rem}
         li{margin:.3rem 0}
@@ -76,40 +75,59 @@ export default function ExportButton({ content, filename, label = 'Export' }) {
 
   return (
     <div style={{ position: 'relative', display: 'inline-block' }}>
-      <button onClick={() => setOpen(!open)} className="btn-ghost"
-        style={{ padding: '0.5rem 1.2rem', fontSize: '0.85rem', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <Download size={14} /> {label}
+      <button
+        onClick={() => setOpen(!open)}
+        className="btn-subtle"
+        style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+      >
+        <Download size={13} /> {label} <ChevronDown size={12} style={{ opacity: 0.6 }} />
       </button>
 
-      {open && (
-        <>
-          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 99 }} />
-          <div style={{
-            position: 'absolute', top: '110%', left: 0, zIndex: 100,
-            background: 'var(--bg-card)', border: '1px solid var(--border)',
-            borderRadius: '10px', padding: '0.4rem', minWidth: '160px',
-            boxShadow: 'var(--shadow)',
-          }}>
-            {[
-              { label: '📄 Markdown (.md)', fn: exportMarkdown },
-              { label: '📝 Plain Text (.txt)', fn: exportText },
-              { label: '🖨️ Print / Save as PDF', fn: exportPDF },
-            ].map(({ label, fn }) => (
-              <button key={label} onClick={fn} style={{
-                display: 'block', width: '100%', textAlign: 'left',
-                background: 'none', border: 'none', padding: '0.5rem 0.8rem',
-                color: 'var(--text-secondary)', cursor: 'pointer',
-                fontSize: '0.82rem', fontFamily: 'Inter,sans-serif',
-                borderRadius: '6px', transition: 'background 0.15s',
+      <AnimatePresence>
+        {open && (
+          <>
+            {/* Backdrop filter to capture dismiss click */}
+            <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 99 }} />
+            
+            <motion.div
+              variants={notifPop}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+              className="glass"
+              style={{
+                position: 'absolute', bottom: '115%', left: 0, zIndex: 100,
+                background: 'var(--bg-card)', border: '1px solid var(--border)',
+                borderRadius: '10px', padding: '0.35rem', minWidth: '170px',
+                boxShadow: 'var(--shadow-md)',
               }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-glass)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                {label}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
+            >
+              {[
+                { label: 'Markdown (.md)', icon: FileCode, fn: exportMarkdown },
+                { label: 'Plain Text (.txt)', icon: FileText, fn: exportText },
+                { label: 'Print / Save PDF', icon: Printer, fn: exportPDF },
+              ].map((opt, i) => (
+                <button
+                  key={i}
+                  onClick={opt.fn}
+                  style={{
+                    display: 'flex', width: '100%', alignItems: 'center', gap: '0.4rem',
+                    background: 'none', border: 'none', padding: '0.45rem 0.6rem',
+                    color: 'var(--text-secondary)', cursor: 'pointer',
+                    fontSize: '0.78rem', fontFamily: 'var(--font-sans)',
+                    borderRadius: '6px', transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-glass)'; e.currentTarget.style.color = 'var(--text-primary)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-secondary)' }}
+                >
+                  <opt.icon size={12} style={{ color: 'var(--accent)' }} />
+                  {opt.label}
+                </button>
+              ))}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

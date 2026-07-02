@@ -23,7 +23,13 @@ app = FastAPI(title="DocMind AI API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:4173",
+        "https://docmind-frontend-817865882900.us-central1.run.app",
+        "https://docmind-ai-501117.web.app",
+        "https://docmind-ai-501117.firebaseapp.com",
+    ],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -176,6 +182,7 @@ async def chat_stream(req: ChatRequest):
     chain_dict   = sess["qa_chain"]
     chain        = chain_dict["chain"]
     retriever    = chain_dict["retriever"]
+    rerank_llm   = chain_dict.get("rerank_llm")
 
     messages = []
     for msg in req.chat_history:
@@ -184,16 +191,25 @@ async def chat_stream(req: ChatRequest):
         elif msg.get("role") == "bot":
             messages.append(AIMessage(content=msg["content"]))
 
-    # Get sources first
-    from rag_core import rerank_documents
+    # Get sources first (LLM-judge reranked), with a real confidence score.
+    from rag_core import rerank_documents, _confidence_score
     raw_docs = retriever.invoke(req.question)
-    top_docs = rerank_documents(req.question, raw_docs, top_k=4)
-    sources  = [{"page": d.metadata.get("page", 0)+1, "snippet": d.page_content[:300], "source_file": d.metadata.get("source_file","")} for d in top_docs]
+    top_docs = rerank_documents(req.question, raw_docs, top_k=4, llm=rerank_llm)
+    confidence = _confidence_score(top_docs)
+    sources  = [
+        {
+            "page"       : d.metadata.get("page", 0) + 1,
+            "snippet"    : d.page_content[:300],
+            "source_file": d.metadata.get("source_file", ""),
+            "score"      : d.metadata.get("rerank_score"),
+        }
+        for d in top_docs
+    ]
 
     async def generate():
         try:
-            # Send sources first
-            yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
+            # Send sources (with scores) + confidence first
+            yield f"data: {json.dumps({'type': 'sources', 'sources': sources, 'confidence': confidence})}\n\n"
             # Stream the answer
             async for chunk in chain.astream({"question": req.question, "chat_history": messages}):
                 if chunk:

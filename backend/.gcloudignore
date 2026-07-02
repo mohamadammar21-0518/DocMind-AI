@@ -1,0 +1,25 @@
+# This file tells gcloud which files to skip when uploading
+.gcloudignore
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# Virtual environments — these are huge, never needed
+venv/
+.venv/
+env/
+
+# Local DB and secrets
+chroma_db/
+*.sqlite3
+.env
+
+# OS
+.DS_Store
+Thumbs.db

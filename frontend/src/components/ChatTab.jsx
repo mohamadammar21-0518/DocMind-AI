@@ -1,32 +1,86 @@
 import { useState, useRef, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import toast from 'react-hot-toast'
-import { sendChat, streamChat, getSuggestedQuestions } from '../api'
+import { motion } from 'framer-motion'
+import {
+  Send, Copy, RefreshCw, Trash2, Download,
+  Star, Brain, Info, HelpCircle,
+  Mic, MicOff, Volume2, VolumeX, StopCircle,
+} from 'lucide-react'
+import { streamChat } from '../api'
+import { messageAppear } from '../motion'
+import { useDictation } from '../hooks/useDictation'
+import { useSpeech }    from '../hooks/useSpeech'
 
-export default function ChatTab({ session, chatHistory, setChatHistory }) {
-  const [input,      setInput]      = useState('')
-  const [loading,    setLoading]    = useState(false)
-  const [suggested,  setSuggested]  = useState([])
-  const [loadingSug, setLoadingSug] = useState(false)
+export default function ChatTab({ session, chatHistory, setChatHistory, suggestedQuestions, onSuggest, loadingSug }) {
+  const [input,   setInput]   = useState('')
+  const [loading, setLoading] = useState(false)
   const bottomRef = useRef(null)
   const inputRef  = useRef(null)
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatHistory, loading])
+  // ── Voice input (dictation) ───────────────────────────────────
+  const { listening, supported: micSupported, toggle: toggleMic, pause: pauseMic, resume: resumeMic } = useDictation()
 
+  const handleMicToggle = () => {
+    if (!micSupported) { toast.error('Your browser does not support voice input'); return }
+    toggleMic((text) => setInput(text), input)
+    if (!listening) toast('Listening… speak now', { icon: '🎙️', duration: 2000 })
+  }
+
+  // ── Voice output (TTS) ────────────────────────────────────────
+  const { speaking, speakingId, supported: ttsSupported, speak, stop: stopSpeech } = useSpeech()
+
+  const handleSpeak = (content, id) => {
+    if (!ttsSupported) { toast.error('Your browser does not support text-to-speech'); return }
+    speak(
+      content,
+      id,
+      () => { if (listening) pauseMic() },    // onBefore — mute mic while TTS plays
+      () => { if (listening) resumeMic() }    // onAfter  — restore mic when TTS finishes
+    )
+  }
+
+  // ── Quick prompts ─────────────────────────────────────────────
+  const quickPrompts = session.loaded
+    ? [
+        'Summarize the document in 5 bullet points',
+        'What are the key arguments and evidence?',
+        'Explain the hardest concept in simple terms',
+        'Create a short study guide from this PDF',
+      ]
+    : [
+        'Upload a PDF to start chatting',
+        'Ask for summaries, study notes, or Q&A',
+        'Use the sidebar to choose your model',
+      ]
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [chatHistory, loading])
+
+  useEffect(() => {
+    const handleInsightsMsg = (e) => { if (e.detail) sendMessage(e.detail) }
+    window.addEventListener('docmind_send_message', handleInsightsMsg)
+    return () => window.removeEventListener('docmind_send_message', handleInsightsMsg)
+  }, [chatHistory, session])
+
+  // ── Send / stream ─────────────────────────────────────────────
   const sendMessage = async (question) => {
     if (!question.trim()) return
-    const q = question.trim()
+    // Stop any playing TTS when a new message is sent
+    stopSpeech()
+
+    const q    = question.trim()
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     const newHistory = [...chatHistory, { role: 'user', content: q, time }]
     setChatHistory(newHistory)
     setInput('')
 
-    // If no document loaded, reply with a helpful message instead of blocking
     if (!session.loaded) {
       setTimeout(() => {
         setChatHistory([...newHistory, {
           role: 'bot',
-          content: "I'd love to help! 😊 Please **upload a PDF document** first using the sidebar on the left.\n\n**Steps to get started:**\n1. Enter your Groq API key\n2. Drag & drop a PDF file\n3. Click **⚡ Process Documents**\n\nOnce your document is indexed, I can answer any questions about it!",
+          content: "I'd love to help! 😊 Please **upload a PDF document** first using the sidebar on the left.\n\n**Steps to get started:**\n1. Select an AI model of choice.\n2. Drag & drop a PDF file inside the upload zone.\n3. Click **⚡ Process Document** to start indexing.\n\nOnce the database finishes embedding, I can answer queries with source references!",
           sources: [],
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         }])
@@ -36,281 +90,367 @@ export default function ChatTab({ session, chatHistory, setChatHistory }) {
 
     setLoading(true)
     try {
-      // Add empty bot message that will be filled by streaming
       const botMsgIndex = newHistory.length
-      setChatHistory([...newHistory, { role: 'bot', content: '', sources: [], time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), streaming: true }])
+      setChatHistory([...newHistory, {
+        role: 'bot', content: '', sources: [],
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        streaming: true,
+      }])
 
       let fullText = ''
       let sources  = []
+      let backendConfidence = null
 
-      const cancel = streamChat(
+      streamChat(
         { question: q, chat_history: chatHistory },
         (token) => {
           fullText += token
           setChatHistory(prev => {
-            const updated = [...prev]
-            updated[botMsgIndex] = { ...updated[botMsgIndex], content: fullText }
-            return updated
+            const u = [...prev]
+            u[botMsgIndex] = { ...u[botMsgIndex], content: fullText }
+            return u
           })
         },
-        (srcs) => { sources = srcs },
+        (srcs, confidence) => {
+          sources = srcs
+          backendConfidence = typeof confidence === 'number' ? confidence : null
+        },
         () => {
-          // Done
           setChatHistory(prev => {
-            const updated = [...prev]
-            updated[botMsgIndex] = { ...updated[botMsgIndex], sources, streaming: false, confidence: Math.min(5, Math.max(1, sources.length + 1)) }
-            return updated
+            const u = [...prev]
+            u[botMsgIndex] = {
+              ...u[botMsgIndex], sources, streaming: false,
+              confidence: backendConfidence ?? Math.min(5, Math.max(1, sources.length + 1)),
+            }
+            return u
           })
           setLoading(false)
           setTimeout(() => inputRef.current?.focus(), 100)
         },
         (err) => {
           setChatHistory(prev => {
-            const updated = [...prev]
-            updated[botMsgIndex] = { role: 'bot', content: `⚠️ ${err}`, sources: [], streaming: false, time: '' }
-            return updated
+            const u = [...prev]
+            u[botMsgIndex] = { role: 'bot', content: `⚠️ ${err}`, sources: [], streaming: false, time: '' }
+            return u
           })
           setLoading(false)
         }
       )
     } catch (e) {
-      setChatHistory([...newHistory, { role: 'bot', content: `⚠️ ${e.message}`, sources: [], time: '' }])
+      setChatHistory([...chatHistory, { role: 'bot', content: `⚠️ ${e.message}`, sources: [], time: '' }])
       setLoading(false)
     }
   }
 
-  const handleSuggest = async () => {
-    if (!session.loaded) return toast.error('Upload a document first')
-    setLoadingSug(true)
-    try { const r = await getSuggestedQuestions(); setSuggested(r.data.questions) }
-    catch { toast.error('Could not generate questions') }
-    finally { setLoadingSug(false) }
+  const handleCopy = (content) => {
+    navigator.clipboard.writeText(content)
+    toast.success('Copied to clipboard')
+  }
+
+  const handleRegenerate = (question) => {
+    stopSpeech()
+    const updated = chatHistory.slice(0, -2)
+    setChatHistory(updated)
+    sendMessage(question)
   }
 
   const exportChat = () => {
     const text = chatHistory.map(m => `${m.role === 'user' ? 'You' : 'DocMind'}:\n${m.content}`).join('\n\n')
     const blob = new Blob([text], { type: 'text/plain' })
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob)
-    a.download = `docmind_${Date.now()}.txt`; a.click()
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `docmind_chat_${Date.now()}.txt`
+    a.click()
   }
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+  const handleComposerResize = (el) => {
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 180)}px`
+  }
 
-      {/* Toolbar */}
-      <div style={{ padding: '0.6rem 1.5rem', borderBottom: '1px solid var(--border)', display: 'flex', gap: '0.5rem', alignItems: 'center', flexShrink: 0, background: 'rgba(13,13,26,0.5)' }}>
-        <GhostBtn onClick={handleSuggest} loading={loadingSug}>
-          {loadingSug ? <Spinner /> : '💡'} Suggest Questions
-        </GhostBtn>
-        {chatHistory.length > 0 && <GhostBtn onClick={exportChat}>💾 Export</GhostBtn>}
-        {chatHistory.length > 0 && <GhostBtn onClick={() => { setChatHistory([]); setSuggested([]) }} danger>🗑️ Clear</GhostBtn>}
-        <div style={{ flex: 1 }} />
-        {session.loaded && (
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#43e97b' }} />
-            {session.num_chunks} chunks indexed
+  // ─────────────────────────────────────────────────────────────
+  return (
+    <div className="chat-tab" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+
+      {/* ── Toolbar ──────────────────────────────────────────── */}
+      <div className="chat-toolbar">
+        <div className="chat-toolbar-left">
+          <div className="chat-conversation-chip">
+            <span className={`chat-conversation-dot ${session.loaded ? 'is-ready' : 'is-idle'}`} />
+            <span>{session.loaded ? 'Document chat ready' : 'Waiting for a PDF'}</span>
           </div>
-        )}
+          {session.loaded && (
+            <div className="chat-meta">
+              {session.num_pages} pages · {session.num_chunks} chunks
+            </div>
+          )}
+          {/* Global TTS stop button — only when playing */}
+          {speaking && (
+            <button
+              onClick={stopSpeech}
+              className="btn-subtle chat-toolbar-button tts-stop-btn"
+              title="Stop reading aloud"
+            >
+              <StopCircle size={12} /> Stop reading
+            </button>
+          )}
+        </div>
+        <div className="chat-toolbar-actions">
+          <button onClick={onSuggest} disabled={loadingSug || !session.loaded} className="btn-subtle chat-toolbar-button">
+            <HelpCircle size={12} /> Suggest
+          </button>
+          {chatHistory.length > 0 && (
+            <>
+              <button onClick={exportChat} className="btn-subtle chat-toolbar-button">
+                <Download size={12} /> Export
+              </button>
+              <button onClick={() => { stopSpeech(); setChatHistory([]) }} className="btn-danger chat-toolbar-button">
+                <Trash2 size={12} /> New chat
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
-      {/* Suggested pills */}
-      {suggested.length > 0 && (
-        <div style={{ padding: '0.6rem 1.5rem', borderBottom: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', gap: '0.4rem', flexShrink: 0, background: 'rgba(102,126,234,0.03)' }}>
-          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', alignSelf: 'center', marginRight: '0.2rem' }}>Try:</span>
-          {suggested.map((q, i) => (
-            <button key={i} onClick={() => sendMessage(q)} style={{
-              background: 'rgba(102,126,234,0.08)', border: '1px solid rgba(102,126,234,0.25)',
-              color: 'var(--accent)', borderRadius: '20px', padding: '0.25rem 0.9rem',
-              fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'Inter,sans-serif',
-              transition: 'all 0.2s',
-            }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(102,126,234,0.15)'; e.currentTarget.style.borderColor = 'var(--accent)' }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(102,126,234,0.08)'; e.currentTarget.style.borderColor = 'rgba(102,126,234,0.25)' }}>
+      {/* ── Recommended pills ────────────────────────────────── */}
+      {suggestedQuestions?.length > 0 && (
+        <div className="chat-recommendations">
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', alignSelf: 'center', marginRight: '0.2rem' }}>Recommended:</span>
+          {suggestedQuestions.slice(0, 3).map((q, idx) => (
+            <button
+              key={idx}
+              onClick={() => sendMessage(q)}
+              style={{
+                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                borderRadius: '16px', padding: '0.2rem 0.75rem',
+                fontSize: '0.72rem', color: 'var(--accent)', cursor: 'pointer', transition: 'all 0.2s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--accent-muted)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--bg-secondary)' }}
+            >
               {q}
             </button>
           ))}
         </div>
       )}
 
-      {/* Messages */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ maxWidth: '720px', width: '100%', margin: '0 auto', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: chatHistory.length === 0 ? 'center' : 'flex-start' }}>
-        {chatHistory.length === 0 ? (
-          <EmptyState loaded={session.loaded} />
-        ) : (
-          <>
-            {chatHistory.map((msg, i) => (
-              <MessageBubble key={i} msg={msg} />
-            ))}
-            {loading && <TypingIndicator />}
-          </>
-        )}
-        <div ref={bottomRef} />
+      {/* ── Messages ─────────────────────────────────────────── */}
+      <div className="chat-scroll">
+        <div className="chat-column">
+          {chatHistory.length === 0 ? (
+            <div className="chat-empty">
+              <div className="chat-empty-icon">🧠</div>
+              <h3 className="panel-heading chat-empty-title">
+                {session.loaded ? 'Start a conversation' : 'Upload a document to begin'}
+              </h3>
+              <p className="chat-empty-copy">
+                {session.loaded
+                  ? 'Ask for a summary, a simpler explanation, key points, or a study guide.'
+                  : 'Add a PDF from the left panel, then come back here to chat with it like ChatGPT.'}
+              </p>
+              <div className="prompt-grid">
+                {quickPrompts.map(q => (
+                  <button
+                    key={q}
+                    onClick={() => session.loaded && sendMessage(q)}
+                    className="prompt-card"
+                    disabled={!session.loaded && q !== 'Upload a PDF to start chatting'}
+                  >
+                    <span>{q}</span>
+                    <span>↗</span>
+                  </button>
+                ))}
+              </div>
+              {session.loaded && (
+                <div style={{ marginTop: '1rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                  {['Summarize the document', 'What are the key terms?', 'What is the main topic?'].map(q => (
+                    <button key={q} onClick={() => sendMessage(q)} className="btn-subtle pill-button" style={{ padding: '0.35rem 0.8rem', fontSize: '0.74rem' }}>
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              {chatHistory.map((msg, i) => {
+                const isUser   = msg.role === 'user'
+                const isPlaying = speakingId === i
+
+                return (
+                  <motion.div
+                    key={i}
+                    variants={messageAppear}
+                    initial="hidden"
+                    animate="visible"
+                    className={`chat-message ${isUser ? 'chat-message-user' : ''}`}
+                  >
+                    {!isUser && (
+                      <div className="chat-avatar">
+                        <Brain size={14} color="white" />
+                      </div>
+                    )}
+
+                    <div style={{ maxWidth: '80%' }}>
+                      <div className={`chat-bubble ${isUser ? 'chat-bubble-user' : 'chat-bubble-assistant'}`}>
+                        {isUser ? msg.content : (
+                          <div className="markdown">
+                            <ReactMarkdown>{msg.content}</ReactMarkdown>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Meta row */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem', justifyContent: isUser ? 'flex-end' : 'flex-start', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.64rem', color: 'var(--text-tertiary)' }}>{msg.time}</span>
+
+                        {!isUser && msg.confidence && (
+                          <span style={{ fontSize: '0.64rem', color: msg.confidence >= 4 ? 'var(--success)' : msg.confidence >= 3 ? 'var(--warning)' : 'var(--danger)', display: 'flex', alignItems: 'center', gap: '0.1rem' }}>
+                            <Star size={8} fill="currentColor" /> {msg.confidence}/5
+                          </span>
+                        )}
+
+                        {!isUser && !msg.streaming && msg.content && (
+                          <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                            {/* Copy */}
+                            <button
+                              onClick={() => handleCopy(msg.content)}
+                              className="msg-action-btn"
+                              title="Copy response"
+                            >
+                              <Copy size={10} />
+                            </button>
+
+                            {/* Regenerate */}
+                            {i > 0 && chatHistory[i - 1]?.role === 'user' && (
+                              <button
+                                onClick={() => handleRegenerate(chatHistory[i - 1].content)}
+                                className="msg-action-btn"
+                                title="Regenerate response"
+                              >
+                                <RefreshCw size={10} />
+                              </button>
+                            )}
+
+                            {/* ── Speak / Stop reading ── */}
+                            {ttsSupported && (
+                              <button
+                                onClick={() => handleSpeak(msg.content, i)}
+                                className={`msg-action-btn msg-speak-btn${isPlaying ? ' is-speaking' : ''}`}
+                                title={isPlaying ? 'Stop reading' : 'Read aloud'}
+                              >
+                                {isPlaying ? <VolumeX size={10} /> : <Volume2 size={10} />}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Sources */}
+                      {!isUser && msg.sources?.length > 0 && (
+                        <div style={{ marginTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                          <div style={{ fontSize: '0.64rem', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                            <Info size={10} /> Reference Sources:
+                          </div>
+                          {msg.sources.map((s, idx) => (
+                            <div key={idx} className="source-card" style={{ fontSize: '0.74rem' }}>
+                              <div style={{ marginBottom: '0.3rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                <span className="citation-chip" style={{ fontSize: '0.62rem' }}>
+                                  Page {s.page}{s.source_file ? ` · ${s.source_file}` : ''}
+                                </span>
+                                {typeof s.score === 'number' && (
+                                  <span style={{ fontSize: '0.6rem', color: 'var(--success)', background: 'var(--success-muted)', padding: '0.05rem 0.3rem', borderRadius: '4px', fontWeight: 600 }}>
+                                    Match: {(s.score * 10).toFixed(0)}/10
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ color: 'var(--text-secondary)', lineHeight: 1.5, fontStyle: 'italic' }}>
+                                "{s.snippet}..."
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                )
+              })}
+
+              {/* Typing indicator */}
+              {loading && (
+                <div className="chat-message" style={{ marginBottom: '1.2rem' }}>
+                  <div className="chat-avatar"><Brain size={14} color="white" /></div>
+                  <div className="typing-indicator">
+                    {[0, 1, 2].map(idx => (
+                      <div key={idx} style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent)', animation: `bounce-dot 1.2s ease-in-out ${idx * 0.2}s infinite` }} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+          <div ref={bottomRef} />
         </div>
       </div>
 
-      {/* Input */}
-      <div style={{ padding: '1rem 1.5rem 1.2rem', borderTop: '1px solid var(--border)', flexShrink: 0, background: 'var(--bg-primary)' }}>
-        <div style={{ maxWidth: '720px', margin: '0 auto' }}>
-          <div style={{
-            display: 'flex', alignItems: 'flex-end', gap: '0',
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border)',
-            borderRadius: '16px',
-            padding: '0.5rem 0.5rem 0.5rem 1.2rem',
-            transition: 'border-color 0.2s, box-shadow 0.2s',
-            boxShadow: '0 2px 12px rgba(0,0,0,0.2)',
-          }}
-            onFocusCapture={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(102,126,234,0.12)' }}
-            onBlurCapture={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.2)' }}>
-            <input
+      {/* ── Composer ─────────────────────────────────────────── */}
+      <div className="chat-composer">
+        <div className="chat-composer-shell">
+          <div className="chat-composer-inner">
+            <textarea
               ref={inputRef}
               value={input}
               onChange={e => setInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), sendMessage(input))}
-              placeholder={session.loaded ? 'Ask anything about your document...' : 'Ask me anything — or upload a PDF to get started...'}
-              style={{
-                flex: 1, background: 'none', border: 'none',
-                color: 'var(--text-primary)', fontSize: '0.95rem',
-                outline: 'none', fontFamily: 'Inter,sans-serif',
-                lineHeight: 1.5, padding: '0.4rem 0',
-                resize: 'none',
+              onInput={e => handleComposerResize(e.currentTarget)}
+              onFocus={e => handleComposerResize(e.currentTarget)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(input) }
               }}
+              placeholder={session.loaded ? 'Ask anything about this document...' : 'Upload a PDF to begin chatting...'}
+              className="chat-composer-input chat-composer-textarea"
+              rows={1}
             />
+
+            {/* Mic / dictation */}
+            <button
+              type="button"
+              onClick={handleMicToggle}
+              className={`chat-composer-mic${listening ? ' is-listening' : ''}`}
+              title={listening ? 'Stop dictation' : 'Dictate a question'}
+            >
+              {listening ? <MicOff size={13} /> : <Mic size={13} />}
+            </button>
+
+            {/* Send */}
             <button
               onClick={() => sendMessage(input)}
               disabled={loading || !input.trim()}
+              className="chat-composer-send"
               style={{
-                background: input.trim() && !loading ? 'var(--accent)' : 'var(--bg-glass)',
-                border: 'none', borderRadius: '10px',
-                width: '38px', height: '38px', flexShrink: 0,
-                color: input.trim() && !loading ? 'white' : 'var(--text-muted)',
+                background: input.trim() && !loading ? 'var(--gradient)' : 'var(--bg-glass)',
+                color: 'white',
                 cursor: loading || !input.trim() ? 'not-allowed' : 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                transition: 'all 0.2s',
-                fontSize: '1rem',
-              }}>
-              {loading
-                ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} />
-                : '➤'}
+              }}
+            >
+              <Send size={12} />
             </button>
           </div>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '0.5rem' }}>
-            Press Enter to send · Powered by Groq Llama 3
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
 
-function MessageBubble({ msg }) {
-  const [showSources, setShowSources] = useState(false)
-  const isUser = msg.role === 'user'
-
-  return (
-    <div style={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start', marginBottom: '1.5rem', alignItems: 'flex-end', gap: '0.7rem', animation: 'fadeInUp 0.3s ease' }}>
-      {!isUser && (
-        <div style={{ width: '34px', height: '34px', borderRadius: '50%', background: 'linear-gradient(135deg,#667eea,#764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', flexShrink: 0, boxShadow: '0 4px 12px rgba(102,126,234,0.3)' }}>🧠</div>
-      )}
-      <div style={{ maxWidth: '72%' }}>
-        <div style={{
-          background: isUser ? 'linear-gradient(135deg,#667eea,#764ba2)' : 'var(--bg-card)',
-          color: 'var(--text-primary)',
-          padding: '0.85rem 1.2rem',
-          borderRadius: isUser ? '20px 20px 4px 20px' : '20px 20px 20px 4px',
-          border: isUser ? 'none' : '1px solid var(--border)',
-          fontSize: '0.9rem', lineHeight: 1.7,
-          boxShadow: isUser ? '0 4px 20px rgba(102,126,234,0.25)' : '0 4px 20px rgba(0,0,0,0.2)',
-        }}>
-          {isUser ? msg.content : <div className="markdown"><ReactMarkdown>{msg.content}</ReactMarkdown></div>}
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', marginTop: '0.3rem', justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
-          <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{msg.time}</span>
-          {!isUser && msg.confidence && (
-            <span style={{ fontSize: '0.68rem', color: msg.confidence >= 4 ? '#43e97b' : msg.confidence >= 3 ? '#f6d365' : '#fc8181', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-              {'★'.repeat(msg.confidence)}{'☆'.repeat(5 - msg.confidence)} confidence
+          <div className="chat-composer-hint">
+            <span>Enter to send · Shift+Enter for new line</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.64rem' }}>
+              {micSupported && (
+                <span style={{ color: listening ? 'var(--danger)' : 'var(--text-muted)' }}>
+                  {listening ? '🔴 Recording…' : '🎙️ Voice input'}
+                </span>
+              )}
+              {ttsSupported && speaking && (
+                <span style={{ color: 'var(--accent)' }}>🔊 Reading aloud…</span>
+              )}
             </span>
-          )}
-          {msg.sources?.length > 0 && (
-            <button onClick={() => setShowSources(!showSources)} style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '0.72rem', cursor: 'pointer', padding: 0, fontFamily: 'Inter,sans-serif', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-              <span style={{ transition: 'transform 0.2s', display: 'inline-block', transform: showSources ? 'rotate(90deg)' : '' }}>▶</span>
-              {msg.sources.length} source{msg.sources.length > 1 ? 's' : ''}
-            </button>
-          )}
-        </div>
-
-        {showSources && msg.sources?.length > 0 && (
-          <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', animation: 'fadeInUp 0.2s ease' }}>
-            {msg.sources.map((s, i) => (
-              <div key={i} style={{ background: 'rgba(102,126,234,0.06)', border: '1px solid rgba(102,126,234,0.15)', borderLeft: '3px solid var(--accent)', borderRadius: '0 10px 10px 0', padding: '0.7rem 0.9rem', fontSize: '0.78rem' }}>
-                <div style={{ marginBottom: '0.4rem' }}>
-                  <span style={{ background: 'rgba(102,126,234,0.15)', color: 'var(--accent)', borderRadius: '12px', padding: '0.15rem 0.6rem', fontSize: '0.7rem', fontWeight: 600 }}>
-                    Page {s.page}{s.source_file ? ` · ${s.source_file}` : ''}
-                  </span>
-                </div>
-                <div style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>{s.snippet}...</div>
-              </div>
-            ))}
           </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function EmptyState({ loaded }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '400px', textAlign: 'center', padding: '2rem' }}>
-      <div style={{ fontSize: '4rem', marginBottom: '1rem', animation: 'float 3s ease-in-out infinite' }}>🧠</div>
-      <h3 style={{ fontFamily: 'Space Grotesk', fontSize: '1.3rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
-        {loaded ? 'Ready to answer your questions' : 'No document loaded'}
-      </h3>
-      <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', maxWidth: '380px', lineHeight: 1.6 }}>
-        {loaded ? 'Ask anything about your document. Try the 💡 Suggest Questions button for ideas.' : 'Upload a PDF in the sidebar to start chatting with your document.'}
-      </p>
-      {loaded && (
-        <div style={{ display: 'flex', gap: '0.8rem', marginTop: '1.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-          {['What is this document about?', 'Summarize the key points', 'What are the main conclusions?'].map(q => (
-            <div key={q} style={{ background: 'var(--bg-glass)', border: '1px solid var(--border)', borderRadius: '20px', padding: '0.4rem 1rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{q}</div>
-          ))}
         </div>
-      )}
-    </div>
-  )
-}
-
-function TypingIndicator() {
-  return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.7rem', marginBottom: '1.5rem', animation: 'fadeIn 0.3s ease' }}>
-      <div style={{ width: '34px', height: '34px', borderRadius: '50%', background: 'linear-gradient(135deg,#667eea,#764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem' }}>🧠</div>
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '20px 20px 20px 4px', padding: '0.85rem 1.2rem', display: 'flex', gap: '5px', alignItems: 'center' }}>
-        {[0, 1, 2].map(i => (
-          <div key={i} style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--accent)', animation: `bounce-dot 1.2s ease-in-out ${i * 0.2}s infinite` }} />
-        ))}
       </div>
     </div>
   )
-}
-
-function GhostBtn({ children, onClick, loading, danger }) {
-  return (
-    <button onClick={onClick} disabled={loading} style={{
-      background: 'var(--bg-glass)', border: `1px solid ${danger ? 'rgba(245,87,108,0.3)' : 'var(--border)'}`,
-      color: danger ? 'var(--danger)' : 'var(--text-secondary)',
-      borderRadius: '8px', padding: '0.35rem 0.8rem', fontSize: '0.78rem',
-      cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'Inter,sans-serif',
-      display: 'flex', alignItems: 'center', gap: '0.3rem', transition: 'all 0.2s',
-      opacity: loading ? 0.6 : 1,
-    }}
-      onMouseEnter={e => { if (!loading) e.currentTarget.style.borderColor = danger ? 'var(--danger)' : 'var(--border-accent)' }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = danger ? 'rgba(245,87,108,0.3)' : 'var(--border)' }}>
-      {children}
-    </button>
-  )
-}
-
-function Spinner() {
-  return <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} />
 }

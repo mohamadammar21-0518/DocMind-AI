@@ -52,7 +52,10 @@ export const streamChat = (data, onToken, onSources, onDone, onError) => {
           try {
             const msg = JSON.parse(line.slice(6))
             if (msg.type === 'token')   onToken(msg.token)
-            if (msg.type === 'sources') onSources(msg.sources)
+            // Server may include a real `confidence` (1-5) alongside sources.
+            // Pass it through so ChatTab can show the LLM-judge score instead
+            // of the old sources.length heuristic.
+            if (msg.type === 'sources') onSources(msg.sources, msg.confidence)
             if (msg.type === 'done')    onDone()
             if (msg.type === 'error')   onError(msg.message)
           } catch {}

@@ -2,10 +2,10 @@
 rag_core.py — Advanced RAG Pipeline
 Features:
   - Multi-PDF ingestion & chunking
-  - HuggingFace local embeddings
+  - Real semantic embeddings (sentence-transformers) with lightweight fallback
   - ChromaDB vector store
   - BM25 keyword search + Vector search (Hybrid)
-  - Cross-Encoder Reranking
+  - Groq LLM-as-judge reranking (with dedup-only fallback)
   - Groq LLM (Llama 3.1)
   - Map-Reduce summarization
   - Study notes generation
@@ -14,8 +14,12 @@ Features:
 """
 
 import os
+import re
+import json
 import shutil
 import time
+import hashlib
+import math
 from dotenv import load_dotenv
 
 from langchain_community.document_loaders import PyPDFLoader
@@ -34,6 +38,80 @@ load_dotenv()
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 CHROMA_DIR      = "chroma_db"
+
+# Real semantic embedding model (384-dim). Used by both the vector store and
+# RAGAS evaluation. Defining it here fixes a previously-undefined NameError in
+# evaluate_rag().
+EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+
+# Reranking model used as the LLM-as-judge for scoring chunk relevance.
+RERANK_MODEL    = "llama-3.1-8b-instant"
+
+
+# ── 0. Embeddings ─────────────────────────────────────────────────────────────
+# LightweightEmbedding is the zero-dependency fallback (no torch / onnxruntime).
+# It maps text to a 64-dim vector via hashed character-trigram counts. Not truly
+# semantic, but keeps the app working on the 512MB Render free tier where the
+# real model would OOM. Kept at module scope so it can be reused as a fallback.
+class LightweightEmbedding:
+    """Hash-based 64-dim embedding — the dependency-free fallback path."""
+    def __call__(self, input):
+        results = []
+        for text in input:
+            vec = [0.0] * 64
+            text_lower = text.lower()
+            for i in range(len(text_lower) - 2):
+                ngram = text_lower[i:i+3]
+                h = int(hashlib.md5(ngram.encode()).hexdigest(), 16)
+                vec[h % 64] += 1.0
+            norm = math.sqrt(sum(x*x for x in vec)) or 1.0
+            vec = [x / norm for x in vec]
+            results.append(vec)
+        return results
+
+
+# Cache so the (slow) model load happens once per process.
+_embeddings_cache = {"real": None, "fallback": None}
+
+
+def get_embeddings():
+    """
+    Return an embedding function suitable for ChromaDB.
+
+    Resolution order:
+      1. If USE_LOCAL_MODELS == "false" (env), go straight to the fallback.
+         Useful to force the lightweight path on memory-constrained deploys.
+      2. Try to lazily import sentence-transformers via langchain_huggingface.
+         On success, return a real HuggingFaceEmbeddings (cached).
+      3. On any ImportError / load failure, warn and fall back to
+         LightweightEmbedding (cached). The app keeps working, just less smart.
+
+    This mirrors the existing RAGAS pattern: real when available, graceful
+    degradation otherwise — never a hard crash.
+    """
+    use_local = os.getenv("USE_LOCAL_MODELS", "true").lower() == "true"
+
+    if not use_local:
+        if _embeddings_cache["fallback"] is None:
+            print("[RAG] USE_LOCAL_MODELS=false → using LightweightEmbedding")
+            _embeddings_cache["fallback"] = LightweightEmbedding()
+        return _embeddings_cache["fallback"]
+
+    if _embeddings_cache["real"] is not None:
+        return _embeddings_cache["real"]
+
+    try:
+        from langchain_huggingface import HuggingFaceEmbeddings
+        print(f"[RAG] Loading real embeddings: {EMBEDDING_MODEL} ...")
+        _embeddings_cache["real"] = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+        print("[RAG] Real embeddings ready (sentence-transformers)")
+        return _embeddings_cache["real"]
+    except Exception as e:
+        print(f"[RAG] Real embeddings unavailable ({type(e).__name__}: {e}). "
+              f"Falling back to LightweightEmbedding.")
+        if _embeddings_cache["fallback"] is None:
+            _embeddings_cache["fallback"] = LightweightEmbedding()
+        return _embeddings_cache["fallback"]
 
 GROQ_MODELS = {
     "Llama 3.1 8B (Fast)"         : "llama-3.1-8b-instant",
@@ -70,42 +148,47 @@ def load_and_split_multiple_pdfs(pdf_files, chunk_size=1000, chunk_overlap=200):
 # ── 2. Vector Store ────────────────────────────────────────────────────────────
 def build_vectorstore(chunks, collection_name="pdf_collection"):
     """
-    Lightweight vector store using chromadb with a simple hash-based
-    embedding function — no onnxruntime, no torch, no ML libs needed.
+    Build an in-memory ChromaDB vector store over the given chunks.
+
+    Uses real semantic embeddings (all-MiniLM-L6-v2) when available, and
+    transparently falls back to the hash-based LightweightEmbedding when the
+    real model can't be loaded (e.g. on the 512MB free tier). Either way the
+    returned object exposes the same .similarity_search() / .get() interface.
     """
     import chromadb as _chromadb
-    import hashlib
-    import math
 
-    # Simple TF-IDF style embedding — no external dependencies
-    class LightweightEmbedding:
-        def __call__(self, input):
-            results = []
-            for text in input:
-                # Create a 64-dim embedding from character n-grams
-                vec = [0.0] * 64
-                text_lower = text.lower()
-                for i in range(len(text_lower) - 2):
-                    ngram = text_lower[i:i+3]
-                    h = int(hashlib.md5(ngram.encode()).hexdigest(), 16)
-                    vec[h % 64] += 1.0
-                # Normalize
-                norm = math.sqrt(sum(x*x for x in vec)) or 1.0
-                vec = [x / norm for x in vec]
-                results.append(vec)
-            return results
+    ef = get_embeddings()
 
     chroma_client = _chromadb.EphemeralClient()
-    ef = LightweightEmbedding()
 
-    collection = chroma_client.get_or_create_collection(
+    # ChromaDB expects an embedding_function that is __call__(input) -> list[list[float]].
+    # - HuggingFaceEmbeddings is NOT callable; it exposes .embed_documents(list[str]).
+    # - LightweightEmbedding IS callable with the same signature Chroma wants.
+    # This adapter normalises both into the ChromaDB interface.
+    class ChromaEmbeddingAdapter:
+        def __init__(self, fn):
+            self.fn = fn
+        def __call__(self, input):
+            # input is a list[str] of texts to embed.
+            if hasattr(self.fn, "embed_documents"):
+                return self.fn.embed_documents(input)
+            return self.fn(input)
+        # ChromaDB also checks for a name attribute in some versions.
+        def name(self):
+            return "docmind_embedding"
+
+    # Always delete existing collection to avoid dimension mismatch when switching
+    # between real (384-dim) and fallback (64-dim) embeddings across deploys.
+    try:
+        chroma_client.delete_collection(name=collection_name)
+    except Exception:
+        pass  # collection didn't exist yet
+
+    collection = chroma_client.create_collection(
         name               = collection_name,
-        embedding_function = ef,
+        embedding_function = ChromaEmbeddingAdapter(ef),
         metadata           = {"hnsw:space": "cosine"},
     )
-    existing = collection.get()
-    if existing["ids"]:
-        collection.delete(ids=existing["ids"])
 
     # Add documents in batches
     texts     = [c.page_content for c in chunks]
@@ -120,7 +203,8 @@ def build_vectorstore(chunks, collection_name="pdf_collection"):
             ids       = ids[i:i+batch],
         )
 
-    print(f"[RAG] Vector store built with {len(chunks)} chunks (chromadb native)")
+    mode = "semantic (MiniLM)" if _embeddings_cache["real"] is ef else "lightweight (hash)"
+    print(f"[RAG] Vector store built with {len(chunks)} chunks — embeddings: {mode}")
 
     class SimpleVectorStore:
         def __init__(self, col):
@@ -130,7 +214,6 @@ def build_vectorstore(chunks, collection_name="pdf_collection"):
             docs = []
             for i, doc in enumerate(results["documents"][0]):
                 meta = results["metadatas"][0][i] if results["metadatas"] else {}
-                from langchain_core.documents import Document
                 docs.append(Document(page_content=doc, metadata=meta))
             return docs
         def get(self):
@@ -169,13 +252,24 @@ def build_hybrid_retriever(vectorstore, chunks, k=6):
     return HybridRetriever()
 
 
-def rerank_documents(query, docs, top_k=4):
+def rerank_documents(query, docs, top_k=4, llm=None):
     """
-    Lightweight reranking without CrossEncoder (saves ~400MB RAM).
-    Deduplicates by content similarity and returns top_k unique chunks.
+    Rerank retrieved chunks by true relevance to the query.
+
+    When an `llm` (a ChatGroq instance) is provided, this scores every
+    candidate chunk 0–10 using the LLM as a judge in a single batched call,
+    then returns the top_k by score. Each returned doc gets its score written
+    to metadata["rerank_score"] so callers (QA chain, chat endpoints, RAGAS)
+    can surface a meaningful confidence.
+
+    Graceful fallback: if no `llm` is given, or the scoring call fails, this
+    degrades to the previous behavior — dedup + original retrieval order. So
+    passing the same args as before (no llm) is always safe.
     """
     if not docs:
         return docs
+
+    # ── 1. Deduplicate (always — preserves prior behavior) ─────────────────────
     seen = set()
     unique = []
     for doc in docs:
@@ -183,8 +277,105 @@ def rerank_documents(query, docs, top_k=4):
         if key not in seen:
             seen.add(key)
             unique.append(doc)
-    print(f"[RAG] Deduped {len(docs)} -> {len(unique[:top_k])} chunks")
+
+    # ── 2. LLM-as-judge scoring (best effort) ──────────────────────────────────
+    if llm is not None and len(unique) > 1:
+        try:
+            scored = _llm_rerank_scores(query, unique, llm)
+            # scored is unique reordered by descending score; each doc carries
+            # metadata["rerank_score"].
+            top = scored[:top_k]
+            print(f"[RAG] LLM-reranked {len(unique)} → {len(top)} chunks "
+                  f"(scores: {[round(d.metadata.get('rerank_score', 0), 1) for d in top]})")
+            return top
+        except Exception as e:
+            # Never let reranking break a chat — fall through to dedup order.
+            print(f"[RAG] LLM rerank failed ({type(e).__name__}: {e}); using dedup order")
+
+    print(f"[RAG] Deduped {len(docs)} → {len(unique[:top_k])} chunks (no LLM rerank)")
     return unique[:top_k]
+
+
+def _llm_rerank_scores(query, docs, llm):
+    """
+    Score each doc's relevance to the query (0–10) in a single LLM call.
+
+    Returns the docs reordered by descending score, with
+    metadata["rerank_score"] populated. Uses one batched prompt + a robust
+    regex parse so a slightly-off model response still yields usable scores.
+    """
+    # Build a compact, numbered candidate list. Truncate each chunk hard so
+    # even 20 candidates stay within the fast model's comfortable window.
+    MAX_CHARS = 350
+    candidates = []
+    for i, doc in enumerate(docs):
+        snippet = " ".join(doc.page_content[:MAX_CHARS].split())
+        candidates.append(f"[{i}] {snippet}")
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system",
+         "You are a relevance judge for a document search system. "
+         "For each numbered text passage, score how relevant it is to the user's "
+         "QUESTION on a scale of 0 to 10 (10 = directly answers it, 0 = unrelated). "
+         "Be strict and concise.\n\n"
+         "Respond with ONLY a JSON object mapping the passage index (as a string) "
+         "to its integer score. Example: {{\"0\": 9, \"1\": 2}}.\n\n"
+         "QUESTION: {question}\n\n"
+         "PASSAGES:\n{passages}"),
+        ("human", "Score each passage."),
+    ])
+
+    chain = prompt | llm | StrOutputParser()
+    raw = chain.invoke({
+        "question": query,
+        "passages": "\n\n".join(candidates),
+    })
+
+    # ── Parse scores defensively (model may add prose / fence) ─────────────────
+    scores = _parse_score_map(raw, expected=len(docs))
+
+    # Attach scores and sort. Default missing/invalid scores to 0.
+    for i, doc in enumerate(docs):
+        doc.metadata["rerank_score"] = scores.get(i, 0)
+
+    return sorted(docs, key=lambda d: d.metadata["rerank_score"], reverse=True)
+
+
+def _parse_score_map(raw, expected):
+    """
+    Best-effort extraction of an {index: int score} map from the model output.
+
+    Tries strict JSON first, then a lenient scan for '<number>: <number>' /
+    '[<number>] <number>' patterns. Always returns a dict keyed by int index.
+    """
+    # 1) Strict JSON (possibly wrapped in ```json ... ``` fences)
+    cleaned = raw.strip()
+    fence = cleaned.find("```")
+    if fence != -1:
+        inner = cleaned[fence+3:]
+        # skip an optional "json" language tag
+        if inner.lstrip().lower().startswith("json"):
+            inner = inner.lstrip()[4:]
+        end = inner.find("```")
+        if end != -1:
+            inner = inner[:end]
+        cleaned = inner.strip()
+
+    try:
+        obj = json.loads(cleaned)
+        if isinstance(obj, dict):
+            return {int(k): int(round(float(v))) for k, v in obj.items()}
+    except Exception:
+        pass
+
+    # 2) Lenient regex: "<idx>: <score>" or "[idx] score"
+    scores = {}
+    for m in re.finditer(r'[\[\{"\']?(\d+)[\]"\']?\s*[:=]\s*([0-9]{1,2})', raw):
+        idx = int(m.group(1))
+        val = int(m.group(2))
+        if 0 <= idx < expected and 0 <= val <= 10:
+            scores[idx] = val
+    return scores
 
 
 # ── 4. QA Chain ───────────────────────────────────────────────────────────────
@@ -212,6 +403,17 @@ def build_qa_chain(vectorstore, chunks, groq_api_key, model_name="llama-3.1-8b-i
     if llm is None:
         raise ValueError("All models failed. Check your Groq API key.")
 
+    # Dedicated lightweight model for reranking. Reranking is latency-sensitive
+    # and called on every turn, so it always uses the fast 8B model regardless
+    # of the answer-generation model the user picked. Falls back to the main
+    # llm on any init error.
+    try:
+        rerank_llm = ChatGroq(
+            model_name=RERANK_MODEL, temperature=0, groq_api_key=groq_api_key
+        )
+    except Exception:
+        rerank_llm = llm
+
     hybrid_retriever = build_hybrid_retriever(vectorstore, chunks)
 
     qa_prompt = ChatPromptTemplate.from_messages([
@@ -227,7 +429,7 @@ def build_qa_chain(vectorstore, chunks, groq_api_key, model_name="llama-3.1-8b-i
     def retrieve_and_rerank(x):
         query    = x["question"]
         docs     = hybrid_retriever.invoke(query)
-        reranked = rerank_documents(query, docs, top_k=4)
+        reranked = rerank_documents(query, docs, top_k=4, llm=rerank_llm)
         return "\n\n".join(doc.page_content for doc in reranked)
 
     chain = (
@@ -239,21 +441,33 @@ def build_qa_chain(vectorstore, chunks, groq_api_key, model_name="llama-3.1-8b-i
         | StrOutputParser()
     )
 
-    print(f"[RAG] QA chain ready — model: {model_name} | Hybrid + Reranking ON")
+    print(f"[RAG] QA chain ready — model: {model_name} | Hybrid + LLM Reranking ON")
     return {
         "chain"           : chain,
         "retriever"       : hybrid_retriever,
         "vectorstore"     : vectorstore,
         "llm"             : llm,
+        "rerank_llm"      : rerank_llm,
         "chunks"          : chunks,
     }
 
 
 def _confidence_score(docs):
     """
-    Simple 1-5 confidence score based on number of relevant chunks retrieved.
-    5 = 4+ chunks found, 1 = 0 chunks found.
+    Map the top chunk's LLM-judge rerank score (0–10) to a 1–5 star rating.
+
+    Falls back to the old chunk-count heuristic only when no rerank scores are
+    present (e.g. the lightweight path with no LLM reranking), so confidence is
+    always meaningful, never fabricated.
     """
+    if docs:
+        top = docs[0].metadata.get("rerank_score")
+        if top is not None:
+            if top >= 8: return 5
+            if top >= 6: return 4
+            if top >= 4: return 3
+            if top >= 2: return 2
+    # Fallback: chunk-count heuristic from the original implementation.
     n = len(docs)
     if n >= 4: return 5
     if n == 3: return 4
@@ -264,8 +478,9 @@ def _confidence_score(docs):
 # ── 5. Ask ────────────────────────────────────────────────────────────────────
 def ask(chain_dict, question, chat_history):
     import time
-    chain     = chain_dict["chain"]
-    retriever = chain_dict["retriever"]
+    chain      = chain_dict["chain"]
+    retriever  = chain_dict["retriever"]
+    rerank_llm = chain_dict.get("rerank_llm")
 
     messages = []
     for msg in chat_history:
@@ -286,15 +501,16 @@ def ask(chain_dict, question, chat_history):
             else:
                 raise e
 
-    # Get sources with reranking
+    # Get sources with reranking (LLM-as-judge when available)
     raw_docs  = retriever.invoke(question)
-    top_docs  = rerank_documents(question, raw_docs, top_k=4)
+    top_docs  = rerank_documents(question, raw_docs, top_k=4, llm=rerank_llm)
     sources   = []
     for doc in top_docs:
         sources.append({
             "page"       : doc.metadata.get("page", 0) + 1,
             "snippet"    : doc.page_content[:300].strip(),
             "source_file": doc.metadata.get("source_file", ""),
+            "score"      : doc.metadata.get("rerank_score"),
         })
 
     return {"answer": answer, "sources": sources, "confidence": _confidence_score(top_docs)}
@@ -537,12 +753,12 @@ def evaluate_rag(chain_dict, test_questions: list) -> dict:
         from ragas.llms import LangchainLLMWrapper
         from ragas.embeddings import LangchainEmbeddingsWrapper
         from ragas import SingleTurnSample
-        from langchain_community.embeddings import HuggingFaceEmbeddings
     except ImportError as e:
         return {"error": f"RAGAS import failed: {e}. Run: pip install ragas datasets"}
 
-    retriever = chain_dict["retriever"]
-    llm       = chain_dict["llm"]
+    retriever  = chain_dict["retriever"]
+    llm        = chain_dict["llm"]
+    rerank_llm = chain_dict.get("rerank_llm")
 
     print(f"[RAGAS] Evaluating {len(test_questions)} questions...")
 
@@ -552,7 +768,7 @@ def evaluate_rag(chain_dict, test_questions: list) -> dict:
             result   = ask(chain_dict, q, [])
             answer   = result["answer"]
             raw_docs = retriever.invoke(q)
-            top_docs = rerank_documents(q, raw_docs, top_k=4)
+            top_docs = rerank_documents(q, raw_docs, top_k=4, llm=rerank_llm)
             contexts = [doc.page_content for doc in top_docs]
 
             samples.append(SingleTurnSample(
@@ -569,9 +785,10 @@ def evaluate_rag(chain_dict, test_questions: list) -> dict:
 
     dataset   = EvaluationDataset(samples=samples)
     ragas_llm = LangchainLLMWrapper(llm)
-    ragas_emb = LangchainEmbeddingsWrapper(
-        HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
-    )
+    # Reuse the same cached embeddings (real MiniLM, or the lightweight
+    # fallback) that the vector store uses — keeps memory use down and
+    # avoids a second model load.
+    ragas_emb = LangchainEmbeddingsWrapper(get_embeddings())
 
     try:
         results = evaluate(
