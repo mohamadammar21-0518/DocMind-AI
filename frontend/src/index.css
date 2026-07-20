@@ -16,6 +16,8 @@
   --bg-card:        #111127;
   --bg-card-hover:  #15152f;
   --bg-elevated:    #18183a;
+  --bg-translucent: rgba(6, 6, 15, 0.86);
+  --bg-translucent-strong: rgba(10, 10, 24, 0.92);
   --bg-glass:       rgba(255, 255, 255, 0.03);
   --bg-glass-hover: rgba(255, 255, 255, 0.06);
   --bg-glass-active:rgba(255, 255, 255, 0.08);
@@ -139,6 +141,9 @@
   --bg-card:        #ffffff;
   --bg-card-hover:  #f8f8ff;
   --bg-elevated:    #ffffff;
+  --bg-translucent: rgba(250, 250, 255, 0.86);
+  --bg-translucent-strong: rgba(255, 255, 255, 0.92);
+  --text-inverse:   #ffffff;
   --bg-glass:       rgba(120, 119, 255, 0.04);
   --bg-glass-hover: rgba(120, 119, 255, 0.07);
   --bg-glass-active:rgba(120, 119, 255, 0.1);
@@ -259,7 +264,7 @@ body {
   align-items: stretch;
   padding: 0 0.75rem;
   gap: 0;
-  background: rgba(6, 6, 15, 0.86);
+  background: var(--bg-translucent);
   backdrop-filter: blur(24px) saturate(1.15);
   -webkit-backdrop-filter: blur(24px) saturate(1.15);
   z-index: 5;
@@ -682,7 +687,7 @@ body {
 .sidebar-shell {
   width: 100%;
   height: 100vh;
-  background: linear-gradient(180deg, rgba(10, 10, 24, 0.98), rgba(6, 6, 15, 0.98));
+  background: linear-gradient(180deg, var(--bg-translucent-strong), var(--bg-translucent));
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -768,7 +773,7 @@ body {
 .chat-toolbar {
   padding: 0.7rem 1rem;
   border-bottom: 1px solid var(--border);
-  background: rgba(10, 10, 24, 0.88);
+  background: var(--bg-translucent-strong);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1003,7 +1008,7 @@ body {
 .chat-composer {
   padding: 0.8rem 1rem 1rem;
   border-top: 1px solid var(--border);
-  background: rgba(10, 10, 24, 0.92);
+  background: var(--bg-translucent-strong);
 }
 
 .chat-composer-shell {
@@ -1015,7 +1020,7 @@ body {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  background: rgba(6, 6, 15, 0.92);
+  background: var(--bg-translucent);
   border: 1px solid var(--border);
   border-radius: 20px;
   padding: 0.55rem 0.55rem 0.55rem 1rem;
@@ -3181,7 +3186,7 @@ textarea:focus-visible {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   Mobile & Tablet Responsive Improvements
+   Mobile & Tablet Responsive Improvements (Premium Redesign)
    ═══════════════════════════════════════════════════════════════════════════════ */
 
 /* ── Workspace content wrapper ───────────────────────────────────────────────── */
@@ -3191,31 +3196,33 @@ textarea:focus-visible {
   position: relative;
 }
 
-/* On mobile, leave room for the bottom nav bar */
+/* On mobile/tablet, leave room for the floating bottom nav bar */
 .workspace-content--mobile {
-  padding-bottom: var(--mobile-nav-height);
+  padding-bottom: calc(var(--mobile-nav-height) + 1.5rem);
 }
 
-/* ── Mobile Bottom Navigation Bar ────────────────────────────────────────────── */
+/* ── Floating Premium Bottom Navigation ──────────────────────────────────────── */
 :root {
   --mobile-nav-height: 64px;
 }
 
 .mobile-bottom-nav {
   position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  bottom: env(safe-area-inset-bottom, 1rem);
+  left: 1rem;
+  right: 1rem;
   height: var(--mobile-nav-height);
   display: flex;
   align-items: stretch;
-  background: rgba(6, 6, 15, 0.96);
-  backdrop-filter: blur(20px) saturate(1.2);
-  -webkit-backdrop-filter: blur(20px) saturate(1.2);
-  border-top: 1px solid var(--border);
+  background: var(--bg-translucent);
+  backdrop-filter: blur(32px) saturate(1.8);
+  -webkit-backdrop-filter: blur(32px) saturate(1.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 2rem; /* Premium pill shape */
   z-index: 100;
-  padding: 0 0.25rem;
-  padding-bottom: env(safe-area-inset-bottom); /* iPhone notch support */
+  padding: 0 0.5rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255,255,255,0.05);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .mobile-nav-item {
@@ -3224,25 +3231,28 @@ textarea:focus-visible {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: 4px;
   background: none;
   border: none;
   color: var(--text-tertiary);
   cursor: pointer;
   padding: 0.4rem 0.2rem;
   position: relative;
-  border-radius: var(--radius-md);
-  transition: color var(--duration-fast) var(--ease-out);
+  border-radius: 1.5rem;
+  transition: all var(--duration-normal) var(--ease-out);
   -webkit-tap-highlight-color: transparent;
   min-width: 0;
+  margin: 0.2rem;
 }
 
 .mobile-nav-item:active {
   transform: scale(0.92);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .mobile-nav-item--active {
   color: var(--accent);
+  background: var(--bg-glass);
 }
 
 .mobile-nav-item--insights.mobile-nav-item--active {
@@ -3250,86 +3260,55 @@ textarea:focus-visible {
 }
 
 .mobile-nav-label {
-  font-size: 0.58rem;
+  font-size: 0.6rem;
   font-weight: 600;
+  font-family: var(--font-display);
   letter-spacing: 0.02em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-  line-height: 1;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
 }
 
+.mobile-nav-item--active .mobile-nav-label {
+  opacity: 1;
+}
+
+/* Beautiful glowing dot indicator */
 .mobile-nav-dot {
   position: absolute;
-  top: 6px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 4px;
-  height: 4px;
+  top: -6px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--accent);
-  display: block;
+  box-shadow: 0 0 12px var(--accent-glow), 0 0 4px var(--accent);
 }
 
-/* ── Tablet layout (769px – 1024px) ─────────────────────────────────────────── */
-@media (min-width: 769px) and (max-width: 1024px) {
-  :root {
-    --sidebar-width: 260px;
-    --topbar-height: 52px;
-  }
-
-  /* Topbar tabs on tablet — show labels but more compact */
-  .topbar-tab {
-    padding: 0 0.65rem;
-    font-size: 0.77rem;
-  }
-
-  /* Detail page padding — less generous on tablet */
-  .detail-page-inner {
-    padding: 1.5rem !important;
-  }
-
-  /* Insights grid — 2 cols on tablet */
-  .insights-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .insights-card--doc  { grid-column: span 2; }
-  .insights-card--wide { grid-column: span 2; }
-
-  /* Feature grid — max 2 cols on tablet */
-  .feature-grid {
-    grid-template-columns: repeat(2, 1fr) !important;
-  }
-
-  /* Chat column narrower to avoid ultra-wide lines */
-  .chat-column {
-    max-width: 700px;
-  }
+.mobile-nav-item--insights .mobile-nav-dot {
+  background: var(--purple);
+  box-shadow: 0 0 12px rgba(167, 139, 250, 0.6), 0 0 4px var(--purple);
 }
 
-/* ── Mobile layout (≤768px) — comprehensive overrides ───────────────────────── */
-@media (max-width: 768px) {
+/* ── Mobile/Tablet layout (≤1024px) ─────────────────────────────────────────── */
+@media (max-width: 1024px) {
 
   /* Topbar — center tabs hidden, show only brand + hamburger + profile */
   .topbar-tabs {
     display: none !important;
   }
 
-  /* Make topbar a 2-zone layout: left (hamburger+brand) and right (theme+profile) */
   .topbar-shell {
     grid-template-columns: 1fr 1fr !important;
-    padding: 0 0.75rem;
+    padding: 0 1rem;
+    height: 60px;
   }
 
   .topbar-left {
-    gap: 0.5rem;
+    gap: 0.75rem;
   }
 
-  /* Brand always visible on mobile */
   .topbar-brand-name {
     display: block !important;
-    font-size: 0.82rem;
+    font-size: 0.9rem;
   }
 
   /* Document status badge hidden on mobile (shown in chat toolbar instead) */
@@ -3337,18 +3316,29 @@ textarea:focus-visible {
     display: none !important;
   }
 
-  /* Sidebar — full-width overlay on mobile */
+  /* Beautiful Sidebar off-canvas drawer */
   .sidebar-shell {
     width: 100vw !important;
-    max-width: 320px;
+    max-width: 340px;
+    border-radius: 0 24px 24px 0;
+    box-shadow: 20px 0 60px rgba(0,0,0,0.4) !important;
+    border-right: 1px solid rgba(255,255,255,0.05);
+  }
+
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 199;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
   }
 
   /* Detail tabs — reduce padding on mobile */
   .detail-page {
-    padding: 1rem !important;
+    padding: 1rem 1rem 5rem 1rem !important; /* extra padding for nav */
   }
 
-  /* Center column for detail tabs */
   .detail-page > div {
     max-width: 100% !important;
     padding: 0 !important;
@@ -3358,17 +3348,16 @@ textarea:focus-visible {
   .feature-grid,
   .detail-grid {
     grid-template-columns: 1fr !important;
-    gap: 0.6rem !important;
+    gap: 0.8rem !important;
   }
 
-  /* Feature cards — more compact on mobile */
   .feature-card {
-    padding: 0.7rem 0.85rem !important;
+    padding: 1rem !important;
   }
 
-  /* Chat scroll — less padding on mobile */
+  /* Chat area adjustments */
   .chat-scroll {
-    padding: 0.75rem 0.75rem 0.75rem;
+    padding: 1rem 1rem 2rem 1rem;
   }
 
   .chat-column {
@@ -3376,254 +3365,123 @@ textarea:focus-visible {
     justify-content: flex-start;
   }
 
-  /* Chat bubble — wider on mobile */
   .chat-bubble {
-    max-width: min(88%, 720px);
-    font-size: 0.84rem;
+    max-width: 90%;
+    font-size: 0.9rem;
+    padding: 0.85rem 1.1rem;
   }
 
-  /* Chat empty state — tighter on mobile */
   .chat-empty {
-    padding: 1.25rem 1rem;
+    padding: 1.5rem 1rem;
     border-radius: 20px;
   }
 
-  .chat-empty-icon {
-    width: 48px;
-    height: 48px;
-    font-size: 1.4rem;
-  }
-
-  .chat-empty-copy {
-    font-size: 0.82rem;
-  }
-
-  /* Prompt grid — 1 column on mobile */
   .prompt-grid {
     grid-template-columns: 1fr !important;
     gap: 0.5rem;
   }
 
-  .prompt-card {
-    padding: 0.8rem 0.9rem;
-    border-radius: 14px;
-  }
-
-  /* Chat toolbar — compact on mobile */
   .chat-toolbar {
-    padding: 0.55rem 0.75rem;
+    padding: 0.75rem 1rem;
     gap: 0.5rem;
+    border-radius: 0 0 20px 20px; /* if it's rounded */
   }
 
   .chat-toolbar-left {
-    gap: 0.4rem;
-    flex-wrap: nowrap;
-    overflow: hidden;
+    gap: 0.5rem;
   }
 
   .chat-meta {
-    display: none; /* hide pages/chunks count on mobile */
+    display: none;
   }
 
-  .chat-toolbar-actions {
-    gap: 0.3rem;
-  }
-
-  .chat-toolbar-button {
-    padding: 0.3rem 0.55rem;
-    font-size: 0.7rem;
-  }
-
-  /* Recommended questions — horizontal scroll on mobile */
   .chat-recommendations {
-    padding: 0.5rem 0.75rem;
+    padding: 0.5rem 1rem;
     display: flex;
     flex-wrap: nowrap;
     overflow-x: auto;
-    gap: 0.4rem;
+    gap: 0.6rem;
     scrollbar-width: none;
   }
-
   .chat-recommendations::-webkit-scrollbar { display: none; }
 
-  /* Chat composer */
+  /* Floating chat composer */
   .chat-composer {
-    padding: 0.6rem 0.75rem 0.75rem;
-  }
-
-  .chat-composer-shell {
-    max-width: 100%;
+    padding: 0.5rem 1rem 1rem 1rem;
   }
 
   .chat-composer-inner {
-    border-radius: 18px;
-    padding: 0.5rem 0.5rem 0.5rem 0.85rem;
+    border-radius: 24px;
+    padding: 0.6rem 0.6rem 0.6rem 1rem;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+    border: 1px solid rgba(120, 119, 255, 0.2);
   }
 
   .chat-composer-input {
-    font-size: 0.9rem;
+    font-size: 0.95rem;
   }
 
   .chat-composer-send {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
+    width: 40px;
+    height: 40px;
+    border-radius: 18px;
   }
 
   .chat-composer-hint {
-    display: none; /* hide hint on mobile to save space */
-  }
-
-  /* Source cards — compact on mobile */
-  .source-card {
-    padding: 0.5rem 0.65rem;
-    font-size: 0.76rem !important;
+    display: none;
   }
 
   /* Insights page */
   .insights-page-header {
-    padding: 0.85rem 1rem;
+    padding: 1rem 1.25rem;
   }
 
   .insights-page-body {
-    padding: 0.85rem 1rem 1rem;
+    padding: 1rem 1.25rem 2rem;
   }
 
   .insights-grid {
     grid-template-columns: 1fr !important;
-    gap: 0.65rem;
+    gap: 0.85rem;
   }
 
   .insights-card--doc,
   .insights-card--wide {
     grid-column: span 1 !important;
   }
-
-  .insights-page-title {
-    font-size: 1.05rem;
-  }
-
-  .insights-page-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-  }
-
-  /* Table on mobile — horizontal scroll */
-  .table-shell {
-    border-radius: 10px;
-  }
-
-  /* Panel headings — smaller on mobile */
-  .panel-heading {
-    font-size: clamp(1.2rem, 4vw, 1.5rem) !important;
-  }
-
-  /* Glass card — reduce padding on mobile */
-  .glass-card.surface-card {
-    padding: 1rem 1.1rem !important;
-  }
-
-  /* Summary/Notes generate button — full width on mobile */
-  .btn-primary {
-    min-height: 44px; /* minimum touch target */
-  }
-
-  /* Input field — larger touch target */
-  .input-field {
-    min-height: 44px;
-    font-size: 0.9rem !important;
-  }
-
-  /* Export button — full width on mobile */
-  .export-wrap {
-    width: 100%;
-  }
-
-  /* Markdown — slightly larger text on mobile for readability */
-  .markdown p,
-  .markdown li {
-    font-size: 0.88rem;
-  }
-
-  .markdown h1 { font-size: 1.25rem; }
-  .markdown h2 { font-size: 1.05rem; }
-  .markdown h3 { font-size: 0.95rem; }
-
-  /* Sidebar backdrop */
-  .sidebar-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.65);
-    z-index: 199;
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-  }
-
-  /* Sidebar content — larger touch targets */
-  .sidebar-option {
-    padding: 0.8rem 0.9rem;
-    min-height: 48px;
-  }
-
-  .sidebar-brand {
-    padding: 1rem 1.1rem;
-  }
-
-  .sidebar-content {
-    padding: 1rem;
-    gap: 0.85rem;
-  }
-
-  /* Icon buttons — minimum 44px touch target */
-  .icon-btn {
-    width: 40px;
-    height: 40px;
-  }
-
-  /* Dropzone — larger on mobile for easier tap */
-  .sidebar-upload {
-    padding: 1.5rem 1rem !important;
-  }
-
-  /* Detail page headings */
-  .detail-page h2 {
-    font-size: clamp(1.2rem, 5vw, 1.5rem) !important;
-  }
-
-  /* Progress bar in detail tabs */
-  .detail-progress {
-    margin-bottom: 1rem !important;
-  }
 }
 
 /* ── Small phone (≤400px) ────────────────────────────────────────────────────── */
 @media (max-width: 400px) {
   .topbar-brand-name {
-    font-size: 0.78rem;
+    font-size: 0.82rem;
   }
 
   .mobile-nav-label {
-    font-size: 0.54rem;
+    display: none; /* Icon only on very small screens */
+  }
+
+  .mobile-nav-item {
+    gap: 0;
   }
 
   .chat-bubble {
-    max-width: 92%;
+    max-width: 95%;
   }
 
   .lp-heading {
-    font-size: 1.6rem;
+    font-size: 2rem;
   }
 }
 
 /* ── Safe area support (iPhone notch / Dynamic Island) ───────────────────────── */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .mobile-bottom-nav {
-    padding-bottom: calc(0.4rem + env(safe-area-inset-bottom));
-    height: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom));
+    bottom: env(safe-area-inset-bottom);
+    margin-bottom: 0.5rem;
   }
 
   .workspace-content--mobile {
-    padding-bottom: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom) + 1rem);
   }
 }

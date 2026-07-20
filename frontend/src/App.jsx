@@ -24,8 +24,7 @@ const TABS = [
   { id: 'insights', Icon: Sparkles,      full: 'Insights' },
 ]
 
-const isMobile  = () => window.innerWidth <= 768
-const isTablet  = () => window.innerWidth > 768 && window.innerWidth <= 1024
+const isMobile  = () => window.innerWidth <= 1024
 
 export default function App() {
   const { isLoaded, isSignedIn } = useUser()
@@ -98,7 +97,7 @@ export default function App() {
     const handleResize = () => {
       const m = isMobile()
       setMobile(m)
-      if (!isTablet()) setSidebarOpen(!m)
+      if (!m) setSidebarOpen(true)
     }
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
