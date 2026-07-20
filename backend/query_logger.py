@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import threading
+from datetime import datetime, timezone
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -66,9 +67,24 @@ class QueryLogger:
     """
 
     def __init__(self, log_path: str | None = None) -> None:
-        raise NotImplementedError(
-            "QueryLogger is a stub — implement in task 8.1"
+        self._path = log_path or os.getenv(
+            "QUERY_LOG_PATH", "/data/query_log.jsonl"
         )
+        self._lock = threading.Lock()
+
+        # Best-effort: ensure the parent directory exists.
+        # If it doesn't (e.g. local dev without /data mount) we silently
+        # degrade — log writes will warn but never crash the app.
+        try:
+            parent = os.path.dirname(self._path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+        except Exception as exc:
+            logger.warning(
+                "QueryLogger: could not create log directory '%s': %s",
+                os.path.dirname(self._path),
+                exc,
+            )
 
     # ------------------------------------------------------------------
     # Public interface
@@ -81,7 +97,22 @@ class QueryLogger:
         Thread-safe.  Failures are caught, logged as warnings, and swallowed —
         a log write failure must never propagate to the caller.
         """
-        raise NotImplementedError
+        try:
+            # Serialise the dataclass to a flat dict.
+            # Nested dataclasses (RawChunkRef / RankedChunkRef) are converted
+            # via dataclasses.asdict so they land as plain dicts in the JSON.
+            payload = dataclasses.asdict(record)
+
+            line = json.dumps(payload, ensure_ascii=False)
+
+            with self._lock:
+                with open(self._path, "a", encoding="utf-8") as fh:
+                    fh.write(line + "\n")
+
+        except Exception as exc:
+            logger.warning(
+                "QueryLogger.append failed (record will be lost): %s", exc
+            )
 
     def tail(self, n: int = 50) -> list[dict[str, Any]]:
         """
@@ -90,4 +121,33 @@ class QueryLogger:
 
         Returns an empty list if the log file does not exist or is empty.
         """
-        raise NotImplementedError
+        try:
+            if not os.path.exists(self._path):
+                return []
+
+            with self._lock:
+                with open(self._path, "r", encoding="utf-8") as fh:
+                    lines = fh.readlines()
+
+            # Take the last n non-empty lines
+            recent_lines = [l.strip() for l in lines if l.strip()][-n:]
+
+            records: list[dict[str, Any]] = []
+            for line in recent_lines:
+                try:
+                    records.append(json.loads(line))
+                except json.JSONDecodeError as exc:
+                    logger.warning("QueryLogger.tail: skipping malformed line: %s", exc)
+
+            return records
+
+        except Exception as exc:
+            logger.warning("QueryLogger.tail failed: %s", exc)
+            return []
+
+
+# ── Module-level singleton ────────────────────────────────────────────────────
+# Imported and used by main.py:
+#   from query_logger import query_logger, QueryLogRecord, RawChunkRef, RankedChunkRef
+
+query_logger = QueryLogger()

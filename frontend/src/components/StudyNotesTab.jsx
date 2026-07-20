@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import toast from 'react-hot-toast'
 import { getStudyNotes } from '../api'
@@ -16,7 +16,7 @@ export default function StudyNotesTab({ session }) {
   const [notes,   setNotes]   = useState('')
   const [loading, setLoading] = useState(false)
 
-  const generate = async () => {
+  const generate = useCallback(async () => {
     if (!session.loaded) return toast.error('Upload a document first')
     setLoading(true); setNotes('')
     try { 
@@ -27,16 +27,12 @@ export default function StudyNotesTab({ session }) {
     } finally { 
       setLoading(false) 
     }
-  }
+  }, [session.loaded])
 
   useEffect(() => {
-    const handleGenerate = () => {
-      generate()
-    }
-
-    window.addEventListener('docmind_generate_notes', handleGenerate)
-    return () => window.removeEventListener('docmind_generate_notes', handleGenerate)
-  }, [session.loaded, session.num_pages])
+    window.addEventListener('docmind_generate_notes', generate)
+    return () => window.removeEventListener('docmind_generate_notes', generate)
+  }, [generate])
 
   return (
     <div className="detail-page" style={{ height: '100%', overflowY: 'auto', padding: 'clamp(1rem, 3vw, 2rem)' }}>

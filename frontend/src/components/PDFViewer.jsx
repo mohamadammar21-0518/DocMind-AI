@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
@@ -11,6 +11,7 @@ export default function PDFViewer({ file, highlightPage, onClose }) {
   const [numPages,    setNumPages]    = useState(null)
   const [currentPage, setCurrentPage] = useState(highlightPage || 1)
   const [scale,       setScale]       = useState(1.0)
+  const jumpInputRef = useRef(null)
 
   const onDocumentLoad = ({ numPages }) => {
     setNumPages(numPages)
@@ -86,17 +87,67 @@ export default function PDFViewer({ file, highlightPage, onClose }) {
 
       {/* Page jump */}
       {numPages > 1 && (
-        <div style={{ padding: '0.8rem', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)', width: '100%', display: 'flex', justifyContent: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-          {Array.from({ length: Math.min(numPages, 20) }, (_, i) => i + 1).map(p => (
-            <button key={p} onClick={() => setCurrentPage(p)} style={{
-              width: '32px', height: '32px', borderRadius: '6px',
-              background: currentPage === p ? 'var(--accent)' : 'var(--bg-glass)',
-              border: `1px solid ${currentPage === p ? 'var(--accent)' : 'var(--border)'}`,
-              color: currentPage === p ? 'white' : 'var(--text-secondary)',
-              cursor: 'pointer', fontSize: '0.78rem', fontFamily: 'Inter,sans-serif',
-            }}>{p}</button>
-          ))}
-          {numPages > 20 && <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem', alignSelf: 'center' }}>+{numPages - 20} more</span>}
+        <div style={{
+          padding: '0.8rem', borderTop: '1px solid var(--border)',
+          background: 'var(--bg-secondary)', width: '100%',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          gap: '0.5rem', flexWrap: 'wrap',
+        }}>
+          {/* For small docs (≤20 pages): show page buttons */}
+          {numPages <= 20
+            ? Array.from({ length: numPages }, (_, i) => i + 1).map(p => (
+                <button
+                  key={p}
+                  onClick={() => setCurrentPage(p)}
+                  style={{
+                    width: '32px', height: '32px', borderRadius: '6px',
+                    background: currentPage === p ? 'var(--accent)' : 'var(--bg-glass)',
+                    border: `1px solid ${currentPage === p ? 'var(--accent)' : 'var(--border)'}`,
+                    color: currentPage === p ? 'white' : 'var(--text-secondary)',
+                    cursor: 'pointer', fontSize: '0.78rem', fontFamily: 'Inter,sans-serif',
+                  }}
+                >{p}</button>
+              ))
+            : (
+              /* For large docs: show numeric input with Go button */
+              <>
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                  Jump to page:
+                </span>
+                <input
+                  ref={jumpInputRef}
+                  type="number"
+                  min={1}
+                  max={numPages}
+                  defaultValue={currentPage}
+                  key={currentPage}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      const v = parseInt(e.currentTarget.value, 10)
+                      if (v >= 1 && v <= numPages) setCurrentPage(v)
+                    }
+                  }}
+                  style={{
+                    width: '64px', height: '32px', borderRadius: '6px', textAlign: 'center',
+                    background: 'var(--bg-glass)', border: '1px solid var(--border)',
+                    color: 'var(--text-primary)', fontSize: '0.82rem',
+                    fontFamily: 'Inter,sans-serif', padding: '0 0.4rem',
+                  }}
+                />
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)' }}>
+                  of {numPages}
+                </span>
+                <IconBtn
+                  onClick={() => {
+                    const v = parseInt(jumpInputRef.current?.value, 10)
+                    if (v >= 1 && v <= numPages) setCurrentPage(v)
+                  }}
+                >
+                  <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '0 4px' }}>Go</span>
+                </IconBtn>
+              </>
+            )
+          }
         </div>
       )}
     </div>

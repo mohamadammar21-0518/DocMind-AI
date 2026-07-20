@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import toast from 'react-hot-toast'
 import { getSummary } from '../api'
@@ -9,7 +9,7 @@ export default function SummaryTab({ session }) {
   const [summary, setSummary] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const generate = async () => {
+  const generate = useCallback(async () => {
     if (!session.loaded) return toast.error('Upload a document first')
     setLoading(true); setSummary('')
     try { 
@@ -20,16 +20,12 @@ export default function SummaryTab({ session }) {
     } finally { 
       setLoading(false) 
     }
-  }
+  }, [session.loaded])
 
   useEffect(() => {
-    const handleGenerate = () => {
-      generate()
-    }
-
-    window.addEventListener('docmind_generate_summary', handleGenerate)
-    return () => window.removeEventListener('docmind_generate_summary', handleGenerate)
-  }, [session.loaded, session.num_pages])
+    window.addEventListener('docmind_generate_summary', generate)
+    return () => window.removeEventListener('docmind_generate_summary', generate)
+  }, [generate])
 
   return (
     <div className="detail-page" style={{ height: '100%', overflowY: 'auto', padding: 'clamp(1rem, 3vw, 2rem)' }}>

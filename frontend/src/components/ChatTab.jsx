@@ -1,25 +1,55 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import toast from 'react-hot-toast'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Send, Copy, RefreshCw, Trash2, Download,
-  Star, Brain, Info, HelpCircle,
+  ArrowUp, Copy, RefreshCw, Trash2, Download,
+  Star, Bot, Info, HelpCircle,
   Mic, MicOff, Volume2, VolumeX, StopCircle,
+  ChevronDown, Upload, Sparkles, FileText, User, Plus, Loader2,
 } from 'lucide-react'
-import { streamChat } from '../api'
+import { streamChat, uploadPDFs } from '../api'
 import { messageAppear } from '../motion'
 import { useDictation } from '../hooks/useDictation'
 import { useSpeech }    from '../hooks/useSpeech'
+import { saveToHistory } from './DocumentHistory'
 
-export default function ChatTab({ session, chatHistory, setChatHistory, suggestedQuestions, onSuggest, loadingSug }) {
-  const [input,   setInput]   = useState('')
+const DEFAULT_MODEL = 'Llama 3.1 8B (Fast)'
+const MAX_FILE_MB = 15
+
+const STARTER_PROMPTS = [
+  { text: 'Summarize the key points', icon: '📝' },
+  { text: 'Explain the main concepts simply', icon: '💡' },
+  { text: 'What are the important takeaways?', icon: '🎯' },
+  { text: 'Create a study guide from this doc', icon: '🎓' },
+]
+
+export default function ChatTab({
+  session,
+  chatHistory,
+  setChatHistory,
+  suggestedQuestions,
+  onSuggest,
+  loadingSug,
+  mobile = false,
+  onOpenSidebar,
+  onUploaded,
+  selectedModel = 'Llama 3.1 8B (Fast)',
+}) {
+  const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
   const bottomRef = useRef(null)
   const inputRef  = useRef(null)
+  const scrollRef = useRef(null)
+  const fileInputRef = useRef(null)
 
-  // ── Voice input (dictation) ───────────────────────────────────
   const { listening, supported: micSupported, toggle: toggleMic, pause: pauseMic, resume: resumeMic } = useDictation()
+  const { speaking, speakingId, supported: ttsSupported, speak, stop: stopSpeech } = useSpeech()
+
+  const hasMessages = chatHistory.length > 0
+  const docName = session.pdf_names?.[0]
 
   const handleMicToggle = () => {
     if (!micSupported) { toast.error('Your browser does not support voice input'); return }
@@ -27,36 +57,18 @@ export default function ChatTab({ session, chatHistory, setChatHistory, suggeste
     if (!listening) toast('Listening… speak now', { icon: '🎙️', duration: 2000 })
   }
 
-  // ── Voice output (TTS) ────────────────────────────────────────
-  const { speaking, speakingId, supported: ttsSupported, speak, stop: stopSpeech } = useSpeech()
-
   const handleSpeak = (content, id) => {
     if (!ttsSupported) { toast.error('Your browser does not support text-to-speech'); return }
-    speak(
-      content,
-      id,
-      () => { if (listening) pauseMic() },    // onBefore — mute mic while TTS plays
-      () => { if (listening) resumeMic() }    // onAfter  — restore mic when TTS finishes
-    )
+    speak(content, id, () => { if (listening) pauseMic() }, () => { if (listening) resumeMic() })
   }
 
-  // ── Quick prompts ─────────────────────────────────────────────
-  const quickPrompts = session.loaded
-    ? [
-        'Summarize the document in 5 bullet points',
-        'What are the key arguments and evidence?',
-        'Explain the hardest concept in simple terms',
-        'Create a short study guide from this PDF',
-      ]
-    : [
-        'Upload a PDF to start chatting',
-        'Ask for summaries, study notes, or Q&A',
-        'Use the sidebar to choose your model',
-      ]
+  const scrollToBottom = useCallback((behavior = 'smooth') => {
+    bottomRef.current?.scrollIntoView({ behavior })
+  }, [])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatHistory, loading])
+    scrollToBottom()
+  }, [chatHistory, loading, scrollToBottom])
 
   useEffect(() => {
     const handleInsightsMsg = (e) => { if (e.detail) sendMessage(e.detail) }
@@ -64,10 +76,14 @@ export default function ChatTab({ session, chatHistory, setChatHistory, suggeste
     return () => window.removeEventListener('docmind_send_message', handleInsightsMsg)
   }, [chatHistory, session])
 
-  // ── Send / stream ─────────────────────────────────────────────
+  const handleScroll = () => {
+    const el = scrollRef.current
+    if (!el) return
+    setShowScrollBtn(el.scrollHeight - el.scrollTop - el.clientHeight > 120)
+  }
+
   const sendMessage = async (question) => {
     if (!question.trim()) return
-    // Stop any playing TTS when a new message is sent
     stopSpeech()
 
     const q    = question.trim()
@@ -80,7 +96,9 @@ export default function ChatTab({ session, chatHistory, setChatHistory, suggeste
       setTimeout(() => {
         setChatHistory([...newHistory, {
           role: 'bot',
-          content: "I'd love to help! 😊 Please **upload a PDF document** first using the sidebar on the left.\n\n**Steps to get started:**\n1. Select an AI model of choice.\n2. Drag & drop a PDF file inside the upload zone.\n3. Click **⚡ Process Document** to start indexing.\n\nOnce the database finishes embedding, I can answer queries with source references!",
+          content: mobile
+            ? 'Please **upload a PDF** first — tap the menu (☰) or the upload button below to add your document.'
+            : "Please **upload a PDF** first using the sidebar.\n\n1. Choose your AI model\n2. Drop your PDF in the upload zone\n3. Click **Process Document**\n\nThen I can answer questions with page citations.",
           sources: [],
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         }])
@@ -144,13 +162,12 @@ export default function ChatTab({ session, chatHistory, setChatHistory, suggeste
 
   const handleCopy = (content) => {
     navigator.clipboard.writeText(content)
-    toast.success('Copied to clipboard')
+    toast.success('Copied')
   }
 
   const handleRegenerate = (question) => {
     stopSpeech()
-    const updated = chatHistory.slice(0, -2)
-    setChatHistory(updated)
+    setChatHistory(chatHistory.slice(0, -2))
     sendMessage(question)
   }
 
@@ -165,117 +182,202 @@ export default function ChatTab({ session, chatHistory, setChatHistory, suggeste
 
   const handleComposerResize = (el) => {
     el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, 180)}px`
+    el.style.height = `${Math.min(el.scrollHeight, mobile ? 120 : 200)}px`
   }
 
-  // ─────────────────────────────────────────────────────────────
-  return (
-    <div className="chat-tab" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    sendMessage(input)
+  }
 
-      {/* ── Toolbar ──────────────────────────────────────────── */}
-      <div className="chat-toolbar">
-        <div className="chat-toolbar-left">
-          <div className="chat-conversation-chip">
-            <span className={`chat-conversation-dot ${session.loaded ? 'is-ready' : 'is-idle'}`} />
-            <span>{session.loaded ? 'Document chat ready' : 'Waiting for a PDF'}</span>
-          </div>
-          {session.loaded && (
-            <div className="chat-meta">
-              {session.num_pages} pages · {session.num_chunks} chunks
-            </div>
-          )}
-          {/* Global TTS stop button — only when playing */}
+  const handlePlusClick = () => {
+    if (uploading) return
+    fileInputRef.current?.click()
+  }
+
+  const handleFileSelect = async (e) => {
+    const picked = Array.from(e.target.files || [])
+    e.target.value = ''
+    if (!picked.length) return
+
+    const invalid = picked.find(f => f.type !== 'application/pdf' && !f.name.toLowerCase().endsWith('.pdf'))
+    if (invalid) {
+      toast.error('Please select PDF files only')
+      return
+    }
+
+    const tooLarge = picked.find(f => f.size > MAX_FILE_MB * 1024 * 1024)
+    if (tooLarge) {
+      toast.error(`Each PDF must be under ${MAX_FILE_MB}MB`)
+      return
+    }
+
+    setUploading(true)
+    const toastId = toast.loading(
+      picked.length === 1
+        ? `Processing "${picked[0].name}"…`
+        : `Processing ${picked.length} PDFs…`
+    )
+
+    const fd = new FormData()
+    picked.forEach(f => fd.append('files', f))
+    fd.append('groq_api_key', '')
+    fd.append('model_label', selectedModel)
+    fd.append('chunk_size', '1000')
+    fd.append('chunk_overlap', '200')
+
+    try {
+      const res = await uploadPDFs(fd)
+      toast.success(res.data.message, { id: toastId })
+      saveToHistory(res.data.pdf_names, res.data.num_pages, res.data.num_chunks)
+      onUploaded?.()
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Upload failed', { id: toastId })
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const displayPrompts = suggestedQuestions?.length > 0
+    ? suggestedQuestions.slice(0, 4).map(q => ({ text: q, icon: '✦' }))
+    : STARTER_PROMPTS
+
+  return (
+    <div className={`chat-tab${mobile ? ' chat-tab--mobile' : ''}`}>
+
+      {/* ── Slim header (ChatGPT-style doc pill + actions) ─────── */}
+      <header className="chat-header">
+        <div className="chat-header-left">
+          <button
+            type="button"
+            className={`chat-doc-pill${session.loaded ? ' chat-doc-pill--live' : ''}`}
+            onClick={!session.loaded ? onOpenSidebar : undefined}
+            title={session.loaded ? docName : 'Upload a document'}
+          >
+            <span className={`chat-doc-dot ${session.loaded ? 'is-ready' : 'is-idle'}`} />
+            <span className="chat-doc-label">
+              {session.loaded
+                ? (docName || 'Document ready')
+                : 'No document loaded'}
+            </span>
+            {session.loaded && (
+              <span className="chat-doc-meta">
+                {session.num_pages}p · {session.num_chunks} chunks
+              </span>
+            )}
+            {!session.loaded && <ChevronDown size={13} className="chat-doc-chevron" />}
+          </button>
+        </div>
+
+        <div className="chat-header-actions">
           {speaking && (
-            <button
-              onClick={stopSpeech}
-              className="btn-subtle chat-toolbar-button tts-stop-btn"
-              title="Stop reading aloud"
-            >
-              <StopCircle size={12} /> Stop reading
+            <button type="button" onClick={stopSpeech} className="chat-header-btn" title="Stop reading" aria-label="Stop reading">
+              <StopCircle size={16} />
             </button>
           )}
-        </div>
-        <div className="chat-toolbar-actions">
-          <button onClick={onSuggest} disabled={loadingSug || !session.loaded} className="btn-subtle chat-toolbar-button">
-            <HelpCircle size={12} /> Suggest
+          <button
+            type="button"
+            onClick={onSuggest}
+            disabled={loadingSug || !session.loaded}
+            className="chat-header-btn"
+            title="Suggest questions"
+            aria-label="Suggest questions"
+          >
+            <HelpCircle size={16} />
           </button>
-          {chatHistory.length > 0 && (
+          {hasMessages && (
             <>
-              <button onClick={exportChat} className="btn-subtle chat-toolbar-button">
-                <Download size={12} /> Export
+              <button type="button" onClick={exportChat} className="chat-header-btn" title="Export chat" aria-label="Export chat">
+                <Download size={16} />
               </button>
-              <button onClick={() => { stopSpeech(); setChatHistory([]) }} className="btn-danger chat-toolbar-button">
-                <Trash2 size={12} /> New chat
+              <button
+                type="button"
+                onClick={() => { stopSpeech(); setChatHistory([]) }}
+                className="chat-header-btn chat-header-btn--danger"
+                title="New chat"
+                aria-label="New chat"
+              >
+                <Trash2 size={16} />
               </button>
             </>
           )}
         </div>
-      </div>
+      </header>
 
-      {/* ── Recommended pills ────────────────────────────────── */}
-      {suggestedQuestions?.length > 0 && (
-        <div className="chat-recommendations">
-          <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', alignSelf: 'center', marginRight: '0.2rem' }}>Recommended:</span>
-          {suggestedQuestions.slice(0, 3).map((q, idx) => (
-            <button
-              key={idx}
-              onClick={() => sendMessage(q)}
-              style={{
-                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                borderRadius: '16px', padding: '0.2rem 0.75rem',
-                fontSize: '0.72rem', color: 'var(--accent)', cursor: 'pointer', transition: 'all 0.2s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--accent-muted)' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--bg-secondary)' }}
-            >
-              {q}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* ── Stage ──────────────────────────────────────────────── */}
+      <main className="chat-stage">
 
-      {/* ── Messages ─────────────────────────────────────────── */}
-      <div className="chat-scroll">
-        <div className="chat-column">
-          {chatHistory.length === 0 ? (
-            <div className="chat-empty">
-              <div className="chat-empty-icon">🧠</div>
-              <h3 className="panel-heading chat-empty-title">
-                {session.loaded ? 'Start a conversation' : 'Upload a document to begin'}
-              </h3>
-              <p className="chat-empty-copy">
-                {session.loaded
-                  ? 'Ask for a summary, a simpler explanation, key points, or a study guide.'
-                  : 'Add a PDF from the left panel, then come back here to chat with it like ChatGPT.'}
-              </p>
-              <div className="prompt-grid">
-                {quickPrompts.map(q => (
-                  <button
-                    key={q}
-                    onClick={() => session.loaded && sendMessage(q)}
-                    className="prompt-card"
-                    disabled={!session.loaded && q !== 'Upload a PDF to start chatting'}
-                  >
-                    <span>{q}</span>
-                    <span>↗</span>
-                  </button>
-                ))}
+        {/* Empty state — centered hero + suggestions */}
+        {!hasMessages && (
+          <>
+            <div className="chat-hero">
+              <div className="chat-hero-icon">
+                {session.loaded ? <Sparkles size={26} /> : <FileText size={26} />}
               </div>
-              {session.loaded && (
-                <div style={{ marginTop: '1rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-                  {['Summarize the document', 'What are the key terms?', 'What is the main topic?'].map(q => (
-                    <button key={q} onClick={() => sendMessage(q)} className="btn-subtle pill-button" style={{ padding: '0.35rem 0.8rem', fontSize: '0.74rem' }}>
-                      {q}
-                    </button>
-                  ))}
-                </div>
-              )}
+              <h2 className="chat-hero-title">
+                {session.loaded ? 'What can I help with?' : 'Chat with your PDF'}
+              </h2>
+              <p className="chat-hero-subtitle">
+                {session.loaded
+                  ? 'Ask questions, get summaries, or explore your document.'
+                  : mobile
+                    ? 'Upload a PDF from the menu to get started.'
+                    : 'Upload a PDF from the sidebar, then ask anything about it.'}
+              </p>
             </div>
-          ) : (
-            <>
+
+            <div className="chat-starters">
+              {displayPrompts.map(({ text, icon }) => (
+                <button
+                  key={text}
+                  type="button"
+                  className="chat-starter-card"
+                  onClick={() => {
+                    if (!session.loaded) { onOpenSidebar?.(); return }
+                    sendMessage(text)
+                  }}
+                >
+                  <span className="chat-starter-icon">{icon}</span>
+                  <span className="chat-starter-text">{text}</span>
+                </button>
+              ))}
+            </div>
+
+            {!session.loaded && (
+              <button type="button" className="chat-upload-cta" onClick={onOpenSidebar}>
+                <Upload size={16} />
+                Upload a PDF to begin
+              </button>
+            )}
+          </>
+        )}
+
+        {/* Message thread */}
+        {hasMessages && (
+          <div className="chat-scroll" ref={scrollRef} onScroll={handleScroll}>
+            <div className="chat-thread">
               {chatHistory.map((msg, i) => {
-                const isUser   = msg.role === 'user'
+                const isUser    = msg.role === 'user'
                 const isPlaying = speakingId === i
+
+                if (isUser) {
+                  return (
+                    <motion.div
+                      key={i}
+                      variants={messageAppear}
+                      initial="hidden"
+                      animate="visible"
+                      className="chat-turn chat-turn--user"
+                    >
+                      <div className="chat-turn-content">
+                        <div className="chat-bubble chat-bubble--user">{msg.content}</div>
+                      </div>
+                      <div className="chat-turn-avatar chat-turn-avatar--user">
+                        <User size={15} />
+                      </div>
+                    </motion.div>
+                  )
+                }
 
                 return (
                   <motion.div
@@ -283,90 +385,71 @@ export default function ChatTab({ session, chatHistory, setChatHistory, suggeste
                     variants={messageAppear}
                     initial="hidden"
                     animate="visible"
-                    className={`chat-message ${isUser ? 'chat-message-user' : ''}`}
+                    className="chat-turn chat-turn--assistant"
                   >
-                    {!isUser && (
-                      <div className="chat-avatar">
-                        <Brain size={14} color="white" />
-                      </div>
-                    )}
-
-                    <div style={{ maxWidth: '80%' }}>
-                      <div className={`chat-bubble ${isUser ? 'chat-bubble-user' : 'chat-bubble-assistant'}`}>
-                        {isUser ? msg.content : (
-                          <div className="markdown">
-                            <ReactMarkdown>{msg.content}</ReactMarkdown>
-                          </div>
-                        )}
+                    <div className="chat-turn-avatar chat-turn-avatar--bot">
+                      <Bot size={16} />
+                    </div>
+                    <div className="chat-turn-content">
+                      <div className="chat-bubble chat-bubble--assistant">
+                        <div className="markdown chat-markdown">
+                          <ReactMarkdown>{msg.content}</ReactMarkdown>
+                        </div>
                       </div>
 
-                      {/* Meta row */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem', justifyContent: isUser ? 'flex-end' : 'flex-start', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '0.64rem', color: 'var(--text-tertiary)' }}>{msg.time}</span>
-
-                        {!isUser && msg.confidence && (
-                          <span style={{ fontSize: '0.64rem', color: msg.confidence >= 4 ? 'var(--success)' : msg.confidence >= 3 ? 'var(--warning)' : 'var(--danger)', display: 'flex', alignItems: 'center', gap: '0.1rem' }}>
-                            <Star size={8} fill="currentColor" /> {msg.confidence}/5
-                          </span>
-                        )}
-
-                        {!isUser && !msg.streaming && msg.content && (
-                          <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
-                            {/* Copy */}
-                            <button
-                              onClick={() => handleCopy(msg.content)}
-                              className="msg-action-btn"
-                              title="Copy response"
-                            >
-                              <Copy size={10} />
+                      {!msg.streaming && msg.content && (
+                        <div className="chat-turn-footer">
+                          {msg.confidence && (
+                            <span className={`chat-confidence chat-confidence--${msg.confidence >= 4 ? 'high' : msg.confidence >= 3 ? 'mid' : 'low'}`}>
+                              <Star size={9} fill="currentColor" /> {msg.confidence}/5
+                            </span>
+                          )}
+                          <div className="chat-turn-actions">
+                            <button type="button" onClick={() => handleCopy(msg.content)} className="chat-action-btn" title="Copy" aria-label="Copy">
+                              <Copy size={13} />
                             </button>
-
-                            {/* Regenerate */}
                             {i > 0 && chatHistory[i - 1]?.role === 'user' && (
                               <button
+                                type="button"
                                 onClick={() => handleRegenerate(chatHistory[i - 1].content)}
-                                className="msg-action-btn"
-                                title="Regenerate response"
+                                className="chat-action-btn"
+                                title="Regenerate"
+                                aria-label="Regenerate"
                               >
-                                <RefreshCw size={10} />
+                                <RefreshCw size={13} />
                               </button>
                             )}
-
-                            {/* ── Speak / Stop reading ── */}
                             {ttsSupported && (
                               <button
+                                type="button"
                                 onClick={() => handleSpeak(msg.content, i)}
-                                className={`msg-action-btn msg-speak-btn${isPlaying ? ' is-speaking' : ''}`}
-                                title={isPlaying ? 'Stop reading' : 'Read aloud'}
+                                className={`chat-action-btn${isPlaying ? ' is-active' : ''}`}
+                                title={isPlaying ? 'Stop' : 'Read aloud'}
+                                aria-label={isPlaying ? 'Stop reading' : 'Read aloud'}
                               >
-                                {isPlaying ? <VolumeX size={10} /> : <Volume2 size={10} />}
+                                {isPlaying ? <VolumeX size={13} /> : <Volume2 size={13} />}
                               </button>
                             )}
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      )}
 
-                      {/* Sources */}
-                      {!isUser && msg.sources?.length > 0 && (
-                        <div style={{ marginTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                          <div style={{ fontSize: '0.64rem', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                            <Info size={10} /> Reference Sources:
-                          </div>
+                      {msg.sources?.length > 0 && (
+                        <div className="chat-sources">
+                          <div className="chat-sources-label"><Info size={11} /> Sources</div>
                           {msg.sources.map((s, idx) => (
-                            <div key={idx} className="source-card" style={{ fontSize: '0.74rem' }}>
-                              <div style={{ marginBottom: '0.3rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                <span className="citation-chip" style={{ fontSize: '0.62rem' }}>
+                            <div key={idx} className="chat-source-card">
+                              <div className="chat-source-header">
+                                <span className="citation-chip">
                                   Page {s.page}{s.source_file ? ` · ${s.source_file}` : ''}
                                 </span>
                                 {typeof s.score === 'number' && (
-                                  <span style={{ fontSize: '0.6rem', color: 'var(--success)', background: 'var(--success-muted)', padding: '0.05rem 0.3rem', borderRadius: '4px', fontWeight: 600 }}>
-                                    Match: {(s.score * 10).toFixed(0)}/10
+                                  <span className="chat-source-score">
+                                    {(s.score * 10).toFixed(0)}/10 match
                                   </span>
                                 )}
                               </div>
-                              <div style={{ color: 'var(--text-secondary)', lineHeight: 1.5, fontStyle: 'italic' }}>
-                                "{s.snippet}..."
-                              </div>
+                              <p className="chat-source-snippet">"{s.snippet}…"</p>
                             </div>
                           ))}
                         </div>
@@ -376,27 +459,65 @@ export default function ChatTab({ session, chatHistory, setChatHistory, suggeste
                 )
               })}
 
-              {/* Typing indicator */}
               {loading && (
-                <div className="chat-message" style={{ marginBottom: '1.2rem' }}>
-                  <div className="chat-avatar"><Brain size={14} color="white" /></div>
-                  <div className="typing-indicator">
-                    {[0, 1, 2].map(idx => (
-                      <div key={idx} style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent)', animation: `bounce-dot 1.2s ease-in-out ${idx * 0.2}s infinite` }} />
-                    ))}
+                <div className="chat-turn chat-turn--assistant">
+                  <div className="chat-turn-avatar chat-turn-avatar--bot">
+                    <Bot size={16} />
+                  </div>
+                  <div className="chat-typing">
+                    <span /><span /><span />
                   </div>
                 </div>
               )}
-            </>
-          )}
-          <div ref={bottomRef} />
-        </div>
-      </div>
 
-      {/* ── Composer ─────────────────────────────────────────── */}
-      <div className="chat-composer">
-        <div className="chat-composer-shell">
-          <div className="chat-composer-inner">
+              <div ref={bottomRef} className="chat-scroll-anchor" />
+            </div>
+
+            <AnimatePresence>
+              {showScrollBtn && (
+                <motion.button
+                  type="button"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 8 }}
+                  className="chat-scroll-fab"
+                  onClick={() => scrollToBottom()}
+                  aria-label="Scroll to bottom"
+                >
+                  <ChevronDown size={18} />
+                </motion.button>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
+      </main>
+
+      {/* ── Composer (pinned bottom, ChatGPT-style) ────────────── */}
+      <div className="chat-composer-wrap">
+        <form className="chat-composer" onSubmit={handleSubmit}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/pdf,.pdf"
+            multiple
+            className="chat-file-input"
+            onChange={handleFileSelect}
+            aria-hidden="true"
+            tabIndex={-1}
+          />
+
+          <div className="chat-composer-box">
+            <button
+              type="button"
+              className={`chat-composer-icon-btn chat-composer-add${uploading ? ' is-uploading' : ''}`}
+              onClick={handlePlusClick}
+              disabled={uploading}
+              aria-label="Upload PDF"
+              title={uploading ? 'Processing PDF…' : 'Upload PDF'}
+            >
+              {uploading ? <Loader2 size={18} className="chat-spinner" /> : <Plus size={18} strokeWidth={2.25} />}
+            </button>
+
             <textarea
               ref={inputRef}
               value={input}
@@ -406,50 +527,43 @@ export default function ChatTab({ session, chatHistory, setChatHistory, suggeste
               onKeyDown={e => {
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(input) }
               }}
-              placeholder={session.loaded ? 'Ask anything about this document...' : 'Upload a PDF to begin chatting...'}
-              className="chat-composer-input chat-composer-textarea"
+              placeholder={
+                uploading
+                  ? 'Processing your document…'
+                  : session.loaded
+                    ? 'Message DocMind…'
+                    : 'Upload a PDF to start chatting…'
+              }
+              className="chat-composer-textarea"
               rows={1}
+              disabled={uploading}
             />
 
-            {/* Mic / dictation */}
             <button
               type="button"
               onClick={handleMicToggle}
-              className={`chat-composer-mic${listening ? ' is-listening' : ''}`}
-              title={listening ? 'Stop dictation' : 'Dictate a question'}
+              disabled={uploading}
+              className={`chat-composer-icon-btn${listening ? ' is-recording' : ''}`}
+              title={listening ? 'Stop dictation' : 'Dictate'}
+              aria-label={listening ? 'Stop dictation' : 'Dictate'}
             >
-              {listening ? <MicOff size={13} /> : <Mic size={13} />}
+              {listening ? <MicOff size={17} /> : <Mic size={17} />}
             </button>
 
-            {/* Send */}
             <button
-              onClick={() => sendMessage(input)}
-              disabled={loading || !input.trim()}
-              className="chat-composer-send"
-              style={{
-                background: input.trim() && !loading ? 'var(--gradient)' : 'var(--bg-glass)',
-                color: 'white',
-                cursor: loading || !input.trim() ? 'not-allowed' : 'pointer',
-              }}
+              type="submit"
+              disabled={loading || uploading || !input.trim()}
+              className={`chat-composer-send${input.trim() && !loading && !uploading ? ' is-ready' : ''}`}
+              aria-label="Send message"
             >
-              <Send size={12} />
+              <ArrowUp size={17} />
             </button>
           </div>
 
-          <div className="chat-composer-hint">
-            <span>Enter to send · Shift+Enter for new line</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.64rem' }}>
-              {micSupported && (
-                <span style={{ color: listening ? 'var(--danger)' : 'var(--text-muted)' }}>
-                  {listening ? '🔴 Recording…' : '🎙️ Voice input'}
-                </span>
-              )}
-              {ttsSupported && speaking && (
-                <span style={{ color: 'var(--accent)' }}>🔊 Reading aloud…</span>
-              )}
-            </span>
-          </div>
-        </div>
+          <p className="chat-composer-disclaimer">
+            DocMind answers from your document. Verify important details against the source.
+          </p>
+        </form>
       </div>
     </div>
   )

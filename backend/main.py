@@ -21,6 +21,8 @@ from rag_core import (
     generate_study_notes, evaluate_rag, GROQ_MODELS,
 )
 from session_store import SessionStore, StorageUnavailableError
+from rate_limiter import RateLimitMiddleware
+from query_logger import query_logger
 
 app = FastAPI(title="DocMind AI API", version="2.0.0")
 
@@ -37,6 +39,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Rate limiting ─────────────────────────────────────────────────────────────
+# Must be added AFTER CORSMiddleware so CORS preflight OPTIONS requests are
+# handled before rate-limit checks run.
+app.add_middleware(RateLimitMiddleware)
 
 # ── Exception handler for StorageUnavailableError → HTTP 503 ──────────────────
 @app.exception_handler(StorageUnavailableError)
@@ -369,14 +376,11 @@ def get_session_info(session_id: str):
 def clear_session_by_id(session_id: str):
     # Remove from in-memory chain cache
     _qa_chains.pop(session_id, None)
-    # Remove from persistent store (best-effort — ignore if not found)
+    # Remove from persistent store
     try:
-        # SessionStore doesn't expose a delete-by-id method, so we just
-        # leave the DB record; it will be purged by the scheduled job.
-        # If a delete method is added later, call it here.
-        pass
+        session_store.delete(session_id)
     except Exception:
-        pass
+        pass  # best-effort; don't fail the user's clear action
     return {"success": True}
 
 # ── Admin routes ──────────────────────────────────────────────────────────────
@@ -386,3 +390,14 @@ def purge_old_sessions():
     """On-demand purge of session records older than 30 days. (Req 2.5)"""
     deleted = session_store.purge_old(30)
     return {"deleted": deleted}
+
+
+@app.get("/admin/query-logs")
+def get_query_logs(n: int = 50, x_admin_api_key: str = Header(default="")):
+    """Return the *n* most recent query log records. Requires X-Admin-Api-Key header."""
+    admin_key = os.getenv("ADMIN_API_KEY", "")
+    if admin_key and x_admin_api_key != admin_key:
+        from fastapi.responses import JSONResponse as _JSONResponse
+        return _JSONResponse(status_code=403, content={"error": "Forbidden"})
+    records = query_logger.tail(n)
+    return {"count": len(records), "records": records}

@@ -213,6 +213,31 @@ class SessionStore:
                 f"Failed to load all sessions: {exc}"
             ) from exc
 
+    def delete(self, session_id: str) -> bool:
+        """
+        Delete the session record for *session_id*.
+
+        Returns:
+            ``True`` if a record was deleted, ``False`` if it did not exist.
+
+        Raises:
+            StorageUnavailableError: if the database cannot be reached.
+        """
+        try:
+            with self._Session() as session:
+                row: SessionRecord | None = session.get(SessionRecord, session_id)
+                if row is None:
+                    return False
+                session.delete(row)
+                session.commit()
+                return True
+        except StorageUnavailableError:
+            raise
+        except Exception as exc:
+            raise StorageUnavailableError(
+                f"Failed to delete session '{session_id}': {exc}"
+            ) from exc
+
     def purge_old(self, days: int = 30) -> int:
         """
         Delete session records whose ``updated_at`` is older than *days* ago.

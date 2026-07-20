@@ -15,6 +15,11 @@ export default function AIInsightsPanel({
   const [summary,        setSummary]        = useState('')
   const [summaryLoading, setSummaryLoading] = useState(false)
 
+  // Reset summary when document changes so stale content isn't shown
+  useEffect(() => {
+    setSummary('')
+  }, [session?.pdf_names?.join(',')])
+
   const latestSources = useMemo(() => {
     const last = [...chatHistory].reverse().find(m => m.role === 'bot' && m.sources?.length)
     return last?.sources || []
@@ -23,11 +28,7 @@ export default function AIInsightsPanel({
   useEffect(() => {
     let active = true
     if (!hasDoc || summary || summaryLoading) return
-    setSummaryLoading(true)
-    getSummary()
-      .then(r => { if (active) setSummary(r.data.summary || '') })
-      .catch(() => { if (active) setSummary('') })
-      .finally(() => { if (active) setSummaryLoading(false) })
+    // Do NOT auto-fetch on mount — wait for explicit user action (Refresh button)
     return () => { active = false }
   }, [hasDoc])
 
@@ -187,7 +188,9 @@ export default function AIInsightsPanel({
                 </div>
               ) : (
                 <p className="insights-empty-note">
-                  {hasDoc ? 'Click Refresh to generate a summary.' : 'Upload a document first.'}
+                  {hasDoc
+                    ? 'Click Refresh to generate a quick summary.'
+                    : 'Upload a document first.'}
                 </p>
               )}
             </div>

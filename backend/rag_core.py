@@ -32,7 +32,6 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_core.documents import Document
-from langchain_classic.retrievers import EnsembleRetriever
 
 load_dotenv()
 
@@ -208,8 +207,27 @@ class CrossEncoderReranker:
         return sorted(docs, key=lambda d: d.metadata["rerank_score"], reverse=True)
 
 
-# Module-level singleton — lazily initialised on first use (task 6.2).
+# Module-level singleton — lazily initialised on first call to rerank_documents.
+# Using a sentinel so we only attempt the (potentially slow) model load once.
 _cross_encoder_reranker: "CrossEncoderReranker | None" = None
+_cross_encoder_loaded: bool = False
+
+
+def _get_cross_encoder() -> "CrossEncoderReranker | None":
+    """
+    Return the module-level CrossEncoderReranker, loading it on first call.
+
+    Returns None if the model failed to load (so callers skip to the LLM path).
+    """
+    global _cross_encoder_reranker, _cross_encoder_loaded
+    if not _cross_encoder_loaded:
+        _cross_encoder_loaded = True
+        try:
+            _cross_encoder_reranker = CrossEncoderReranker()
+        except Exception as exc:
+            print(f"[RAG] CrossEncoder singleton init failed: {exc}")
+            _cross_encoder_reranker = None
+    return _cross_encoder_reranker
 
 
 # ── 1. PDF Loading ─────────────────────────────────────────────────────────────
@@ -362,22 +380,25 @@ def build_hybrid_retriever(vectorstore, chunks, k=6):
 
 def rerank_documents(query, docs, top_k=4, llm=None):
     """
-    Rerank retrieved chunks by true relevance to the query.
+    Two-stage reranking pipeline:
 
-    When an `llm` (a ChatGroq instance) is provided, this scores every
-    candidate chunk 0–10 using the LLM as a judge in a single batched call,
-    then returns the top_k by score. Each returned doc gets its score written
-    to metadata["rerank_score"] so callers (QA chain, chat endpoints, RAGAS)
-    can surface a meaningful confidence.
+    Stage 1 — CrossEncoder (local, no API cost):
+        Scores all deduplicated candidates using the cross-encoder neural model.
+        Produces a coarse ranking with rerank_score set on each doc.
+        Skipped gracefully if the model isn't available.
 
-    Graceful fallback: if no `llm` is given, or the scoring call fails, this
-    degrades to the previous behavior — dedup + original retrieval order. So
-    passing the same args as before (no llm) is always safe.
+    Stage 2 — LLM-as-judge (Groq, best quality):
+        Re-scores the top candidates from Stage 1 using an LLM prompt.
+        Only runs when `llm` is provided. Overwrites rerank_score with the
+        LLM's judgement. Falls back to the Stage 1 order on any error.
+
+    Graceful fallback: if both stages fail/are unavailable, returns
+    deduplicated docs in original retrieval order — never crashes.
     """
     if not docs:
         return docs
 
-    # ── 1. Deduplicate (always — preserves prior behavior) ─────────────────────
+    # ── 1. Deduplicate (always) ────────────────────────────────────────────────
     seen = set()
     unique = []
     for doc in docs:
@@ -386,21 +407,27 @@ def rerank_documents(query, docs, top_k=4, llm=None):
             seen.add(key)
             unique.append(doc)
 
-    # ── 2. LLM-as-judge scoring (best effort) ──────────────────────────────────
+    # ── Stage 1: CrossEncoder local reranking ──────────────────────────────────
+    cross_encoder = _get_cross_encoder()
+    if cross_encoder is not None and cross_encoder._available and len(unique) > 1:
+        try:
+            unique = cross_encoder.score(query, unique)
+            print(f"[RAG] CrossEncoder stage-1: {len(unique)} chunks scored")
+        except Exception as exc:
+            print(f"[RAG] CrossEncoder stage-1 failed ({type(exc).__name__}: {exc}); skipping")
+
+    # ── Stage 2: LLM-as-judge reranking (best effort) ─────────────────────────
     if llm is not None and len(unique) > 1:
         try:
             scored = _llm_rerank_scores(query, unique, llm)
-            # scored is unique reordered by descending score; each doc carries
-            # metadata["rerank_score"].
             top = scored[:top_k]
-            print(f"[RAG] LLM-reranked {len(unique)} → {len(top)} chunks "
+            print(f"[RAG] LLM stage-2 reranked {len(unique)} → {len(top)} chunks "
                   f"(scores: {[round(d.metadata.get('rerank_score', 0), 1) for d in top]})")
             return top
         except Exception as e:
-            # Never let reranking break a chat — fall through to dedup order.
-            print(f"[RAG] LLM rerank failed ({type(e).__name__}: {e}); using dedup order")
+            print(f"[RAG] LLM stage-2 rerank failed ({type(e).__name__}: {e}); using stage-1 order")
 
-    print(f"[RAG] Deduped {len(docs)} → {len(unique[:top_k])} chunks (no LLM rerank)")
+    print(f"[RAG] Deduped {len(docs)} → {len(unique[:top_k])} chunks")
     return unique[:top_k]
 
 
@@ -896,7 +923,7 @@ def evaluate_rag(chain_dict, test_questions: list) -> dict:
     # Reuse the same cached embeddings (real MiniLM, or the lightweight
     # fallback) that the vector store uses — keeps memory use down and
     # avoids a second model load.
-    ragas_emb = LangchainEmbeddingsWrapper(get_embeddings())
+    ragas_emb = LangchainEmbeddingsWrapper(get_embeddings()[0])  # [0] = fn, [1] = is_fallback bool
 
     try:
         results = evaluate(

@@ -1,32 +1,66 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="DocMind AI favicon">
+  <!--
+    Favicon — same mark as logo.svg, same proportions, same element placement.
+    Simplified for legibility at 16–32px: thicker strokes, no dashed ring,
+    no connection lines/dots (too small to read), stronger contrast.
+  -->
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#667eea"/>
-      <stop offset="100%" style="stop-color:#764ba2"/>
+    <linearGradient id="fbg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#0d0d1a"/>
+      <stop offset="100%" stop-color="#06060f"/>
     </linearGradient>
-    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#f093fb"/>
-      <stop offset="100%" style="stop-color:#667eea"/>
+    <linearGradient id="fbrand" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#a78bfa"/>
+      <stop offset="100%" stop-color="#6366f1"/>
     </linearGradient>
+    <radialGradient id="fglow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#c4b5fd" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#7c3aed" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="fng" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
   </defs>
 
-  <!-- Background circle -->
-  <circle cx="32" cy="32" r="30" fill="url(#bg)"/>
+  <!-- Card background — identical rounded square as logo -->
+  <rect width="512" height="512" rx="112" ry="112" fill="url(#fbg)"/>
 
-  <!-- Brain shape -->
-  <path d="M22 20 C18 20 15 23 15 27 C15 29 16 31 18 32 C16 33 15 35 15 37 C15 41 18 44 22 44 C23 44 24 43.5 25 43 L25 21 C24 20.5 23 20 22 20Z" fill="white" opacity="0.95"/>
-  <path d="M42 20 C46 20 49 23 49 27 C49 29 48 31 46 32 C48 33 49 35 49 37 C49 41 46 44 42 44 C41 44 40 43.5 39 43 L39 21 C40 20.5 41 20 42 20Z" fill="white" opacity="0.95"/>
+  <!-- Background glow echo -->
+  <ellipse cx="300" cy="200" rx="220" ry="180" fill="url(#fglow)"/>
 
-  <!-- Center connection -->
-  <rect x="25" y="19" width="14" height="26" rx="2" fill="white" opacity="0.95"/>
+  <!-- ── Document: same path as logo.svg ── -->
+  <!-- Main page body -->
+  <path
+    d="M148 124 L314 124 L368 178 L368 394 Q368 406 356 406 L148 406 Q136 406 136 394 L136 136 Q136 124 148 124 Z"
+    fill="#1a1a2e"
+    stroke="url(#fbrand)"
+    stroke-width="5"
+  />
+  <!-- Folded corner triangle -->
+  <path
+    d="M314 124 L314 178 L368 178 Z"
+    fill="#0d0d1a"
+    stroke="url(#fbrand)"
+    stroke-width="5"
+  />
+  <!-- Fold crease — slightly bolder than logo for favicon visibility -->
+  <line x1="314" y1="124" x2="368" y2="178" stroke="#a78bfa" stroke-width="3" opacity="0.7"/>
 
-  <!-- Neural lines -->
-  <line x1="25" y1="26" x2="39" y2="26" stroke="url(#glow)" stroke-width="1.5" opacity="0.8"/>
-  <line x1="25" y1="32" x2="39" y2="32" stroke="url(#glow)" stroke-width="1.5" opacity="0.8"/>
-  <line x1="25" y1="38" x2="39" y2="38" stroke="url(#glow)" stroke-width="1.5" opacity="0.8"/>
+  <!-- ── Text lines — same positions as logo, slightly thicker ── -->
+  <g opacity="0.7">
+    <rect x="168" y="218" width="140" height="9"  rx="4.5" fill="url(#fbrand)"/>
+    <rect x="168" y="244" width="160" height="9"  rx="4.5" fill="#6366f1"/>
+    <rect x="168" y="270" width="120" height="9"  rx="4.5" fill="#6366f1"/>
+    <rect x="168" y="306" width="150" height="9"  rx="4.5" fill="#6366f1"/>
+    <rect x="168" y="332" width="110" height="9"  rx="4.5" fill="#6366f1"/>
+  </g>
 
-  <!-- Dots -->
-  <circle cx="32" cy="26" r="2" fill="url(#bg)"/>
-  <circle cx="32" cy="32" r="2" fill="url(#bg)"/>
-  <circle cx="32" cy="38" r="2" fill="url(#bg)"/>
+  <!-- ── Neural node — same cx/cy as logo (342, 182) ── -->
+  <!-- Soft outer glow -->
+  <circle cx="342" cy="182" r="54" fill="#7c3aed" opacity="0.2" filter="url(#fng)"/>
+  <!-- Node core — filled gradient, same as logo -->
+  <circle cx="342" cy="182" r="26" fill="url(#fbrand)" filter="url(#fng)"/>
+  <!-- Inner bright centre — slightly larger for favicon pop -->
+  <circle cx="342" cy="182" r="12" fill="#ede9fe"/>
 </svg>

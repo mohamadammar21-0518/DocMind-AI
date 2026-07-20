@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Toaster, toast } from 'react-hot-toast'
 import { UserButton, useUser } from '@clerk/clerk-react'
@@ -38,6 +38,7 @@ export default function App() {
   })
   const [suggestedQuestions, setSuggestedQuestions] = useState([])
   const [loadingSug,  setLoadingSug]  = useState(false)
+  const [selectedModel, setSelectedModel] = useState('Llama 3.1 8B (Fast)')
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile())
   const [mobile,      setMobile]      = useState(isMobile())
   const [theme,       setTheme]       = useState(() =>
@@ -162,7 +163,7 @@ export default function App() {
               ...(mobile ? { position: 'fixed', top: 0, left: 0, bottom: 0, boxShadow: 'var(--shadow-xl)' } : {}),
             }}
           >
-            <Sidebar session={session} onUploaded={() => {
+            <Sidebar session={session} selectedModel={selectedModel} onModelChange={setSelectedModel} onUploaded={() => {
               refreshSession()
               setChatHistory([])
               if (mobile) setSidebarOpen(false)
@@ -172,7 +173,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main workspace */}
-      <div className="workspace-shell">
+      <div className={`workspace-shell${mobile ? ' workspace-shell--mobile' : ''}`}>
 
         {/* ── Topbar ──────────────────────────────────────────────── */}
         <header className="topbar-shell">
@@ -192,7 +193,7 @@ export default function App() {
             </motion.button>
 
             <div className="topbar-brand">
-              <img src="/logo.png" alt="DocMind AI" className="topbar-brand-logo" />
+              <img src="/logo.svg" alt="DocMind AI" className="topbar-brand-logo" />
               <span className="topbar-brand-name gradient-text">DocMind AI</span>
             </div>
 
@@ -257,7 +258,7 @@ export default function App() {
         </header>
 
         {/* Tab content */}
-        <div className={`workspace-content${mobile ? ' workspace-content--mobile' : ''}`}>
+        <div className="workspace-content">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -265,7 +266,7 @@ export default function App() {
               initial="initial"
               animate="animate"
               exit="exit"
-              style={{ position: 'absolute', inset: 0, overflow: 'auto' }}
+              className="workspace-tab-panel"
             >
               {activeTab === 'chat'     && (
                 <ChatTab
@@ -275,6 +276,13 @@ export default function App() {
                   suggestedQuestions={suggestedQuestions}
                   onSuggest={fetchSuggestions}
                   loadingSug={loadingSug}
+                  mobile={mobile}
+                  onOpenSidebar={() => setSidebarOpen(true)}
+                  selectedModel={selectedModel}
+                  onUploaded={() => {
+                    refreshSession()
+                    setChatHistory([])
+                  }}
                 />
               )}
               {activeTab === 'summary'  && <SummaryTab session={session} />}

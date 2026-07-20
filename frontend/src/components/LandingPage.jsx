@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react'
+﻿import { useRef, useState, useEffect, useCallback } from 'react'
 import { SignInButton, SignUpButton, UserButton, useUser } from '@clerk/clerk-react'
 import {
   Menu, X, Plus, Clock, Zap, ChevronDown,
@@ -339,7 +339,7 @@ export default function LandingPage() {
       <aside className={`lp-sidebar${sidebarOpen ? ' lp-sidebar--open' : ''}`}>
         <div className="lp-sidebar-header">
           <div className="lp-sidebar-brand">
-            <img src="/logo.png" alt="DocMind AI" className="lp-sidebar-logo" />
+            <img src="/logo.svg" alt="DocMind AI" className="lp-sidebar-logo" />
             <span className="lp-sidebar-brandname">DocMind AI</span>
           </div>
           <button
@@ -408,7 +408,7 @@ export default function LandingPage() {
             </button>
 
             <button type="button" className="lp-model-pill" onClick={focusComposer}>
-              <img src="/logo.png" alt="" className="lp-model-pill-logo" />
+              <img src="/logo.svg" alt="" className="lp-model-pill-logo" />
               <span>DocMind AI</span>
               <ChevronDown size={13} />
             </button>

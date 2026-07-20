@@ -28,7 +28,6 @@ export const sendChat = (data) =>
 
 export const streamChat = (data, onToken, onSources, onDone, onError) => {
   const BASE = import.meta.env.VITE_API_URL || '/api'
-  const es = new EventSource(`${BASE}/chat/stream?_=${Date.now()}`)
 
   // Use fetch with POST for SSE since EventSource only supports GET
   const ctrl = new AbortController()

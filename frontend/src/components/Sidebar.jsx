@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+﻿import { useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useDropzone } from 'react-dropzone'
 import toast from 'react-hot-toast'
@@ -16,8 +16,7 @@ const MODELS = [
 
 const STEPS = ['Reading PDF...', 'Chunking text...', 'Building index...', 'Finalizing...']
 
-export default function Sidebar({ session, onUploaded }) {
-  const [model,        setModel]        = useState(MODELS[0].label)
+export default function Sidebar({ session, onUploaded, selectedModel, onModelChange }) {
   const [chunkSize,    setChunkSize]    = useState(1000)
   const [chunkOverlap, setChunkOverlap] = useState(200)
   const [files,        setFiles]        = useState([])
@@ -25,6 +24,10 @@ export default function Sidebar({ session, onUploaded }) {
   const [loadingStep,  setLoadingStep]  = useState('')
   const [loadingIdx,   setLoadingIdx]   = useState(0)
   const [showSettings, setShowSettings] = useState(false)
+
+  // Use controlled model from parent; fall back to local state if props not provided
+  const model    = selectedModel ?? MODELS[0].label
+  const setModel = onModelChange ?? (() => {})
 
   const onDrop = useCallback(accepted => setFiles(prev => [...prev, ...accepted]), [])
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
@@ -83,7 +86,7 @@ export default function Sidebar({ session, onUploaded }) {
       {/* Header / Brand */}
       <div className="sidebar-brand">
         <motion.img
-          src="/logo.png" alt="DocMind AI"
+          src="/logo.svg" alt="DocMind AI"
           whileHover={{ rotate: 8, scale: 1.08 }}
           style={{ width: 28, height: 28, objectFit: 'contain', borderRadius: 6 }}
         />

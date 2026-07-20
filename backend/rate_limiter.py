@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import time
-from collections import deque
+from collections import defaultdict, deque
 from typing import Any
 
 from fastapi import Request
@@ -32,9 +32,14 @@ def extract_client_ip(request: Request) -> str:
     (Cloud Run load balancer sets this header).  Falls back to the direct
     connection IP otherwise.
     """
-    raise NotImplementedError(
-        "extract_client_ip is a stub — implement in task 9.1"
-    )
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        # Take the leftmost (original client) IP, strip whitespace
+        return forwarded_for.split(",")[0].strip()
+    # Direct connection fallback
+    if request.client:
+        return request.client.host
+    return "unknown"
 
 
 # ── Sliding-window limiter ────────────────────────────────────────────────────
@@ -51,9 +56,10 @@ class SlidingWindowRateLimiter:
     """
 
     def __init__(self, limit: int, window_seconds: int) -> None:
-        raise NotImplementedError(
-            "SlidingWindowRateLimiter is a stub — implement in task 9.1"
-        )
+        self.limit = limit
+        self.window_seconds = window_seconds
+        # ip -> deque of float timestamps (epoch seconds)
+        self._windows: dict[str, deque] = defaultdict(deque)
 
     def check(self, ip: str) -> tuple[bool, int]:
         """
@@ -66,7 +72,28 @@ class SlidingWindowRateLimiter:
         All internal operations are wrapped in try/except.  On any error the
         request is allowed and a warning is logged.
         """
-        raise NotImplementedError
+        try:
+            now = time.time()
+            window_start = now - self.window_seconds
+            dq = self._windows[ip]
+
+            # Evict timestamps that have fallen outside the window
+            while dq and dq[0] < window_start:
+                dq.popleft()
+
+            if len(dq) >= self.limit:
+                # Seconds until the oldest request falls out of the window
+                retry_after = int(dq[0] - window_start) + 1
+                return False, retry_after
+
+            # Record this request
+            dq.append(now)
+            return True, 0
+
+        except Exception as exc:
+            logger.warning("RateLimiter.check error for ip=%s: %s", ip, exc)
+            # Fail open — never block a request due to limiter internals
+            return True, 0
 
 
 # ── Middleware ─────────────────────────────────────────────────────────────────
@@ -91,11 +118,50 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     WINDOW_SECONDS: int = 60
 
     def __init__(self, app: Any) -> None:
-        raise NotImplementedError(
-            "RateLimitMiddleware is a stub — implement in task 9.1"
+        super().__init__(app)
+        self._upload_limiter = SlidingWindowRateLimiter(
+            limit=self.UPLOAD_LIMIT,
+            window_seconds=self.WINDOW_SECONDS,
+        )
+        self._chat_limiter = SlidingWindowRateLimiter(
+            limit=self.CHAT_LIMIT,
+            window_seconds=self.WINDOW_SECONDS,
         )
 
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
-        raise NotImplementedError
+        try:
+            path = request.url.path
+
+            # Determine which limiter applies (if any)
+            if path == "/upload":
+                limiter = self._upload_limiter
+            elif path in ("/chat", "/chat/stream"):
+                limiter = self._chat_limiter
+            else:
+                # Not a rate-limited route — pass through immediately
+                return await call_next(request)
+
+            ip = extract_client_ip(request)
+            allowed, retry_after = limiter.check(ip)
+
+            if not allowed:
+                logger.warning(
+                    "Rate limit exceeded: ip=%s path=%s retry_after=%ds",
+                    ip, path, retry_after,
+                )
+                return JSONResponse(
+                    status_code=429,
+                    content={
+                        "error": "Rate limit exceeded",
+                        "retry_after_seconds": retry_after,
+                    },
+                    headers={"Retry-After": str(retry_after)},
+                )
+
+        except Exception as exc:
+            logger.warning("RateLimitMiddleware error: %s", exc)
+            # Fail open — never block legitimate traffic due to middleware errors
+
+        return await call_next(request)
