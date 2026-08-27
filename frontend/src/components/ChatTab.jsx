@@ -14,7 +14,7 @@ import { useDictation } from '../hooks/useDictation'
 import { useSpeech }    from '../hooks/useSpeech'
 import { saveToHistory } from './DocumentHistory'
 
-const DEFAULT_MODEL = 'Llama 3.1 8B (Fast)'
+const DEFAULT_MODEL = 'GPT-OSS 20B (Fast)'
 const MAX_FILE_MB = 15
 
 const STARTER_PROMPTS = [
@@ -34,7 +34,7 @@ export default function ChatTab({
   mobile = false,
   onOpenSidebar,
   onUploaded,
-  selectedModel = 'Llama 3.1 8B (Fast)',
+  selectedModel = 'GPT-OSS 20B (Fast)',
 }) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)

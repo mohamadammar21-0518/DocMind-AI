@@ -114,7 +114,7 @@ def get_models():
 async def upload_pdfs(
     files        : List[UploadFile] = File(...),
     groq_api_key : str = Form(default=""),
-    model_label  : str = Form("Llama 3.1 8B (Fast)"),
+    model_label  : str = Form("GPT-OSS 20B (Fast)"),
     chunk_size   : int = Form(800),
     chunk_overlap: int = Form(100),
     session_id   : str = Form(default=""),
@@ -139,7 +139,7 @@ async def upload_pdfs(
     if not session_id:
         session_id = str(uuid.uuid4())
 
-    model_name = GROQ_MODELS.get(model_label, "llama-3.1-8b-instant")
+    model_name = GROQ_MODELS.get(model_label, "openai/gpt-oss-20b")
     tmp_files  = []
 
     try:
@@ -401,3 +401,84 @@ def get_query_logs(n: int = 50, x_admin_api_key: str = Header(default="")):
         return _JSONResponse(status_code=403, content={"error": "Forbidden"})
     records = query_logger.tail(n)
     return {"count": len(records), "records": records}
+
+
+# ── TEMPORARY: ChromaDB inspector — READ-ONLY, remove after use ───────────────
+@app.get("/admin/chroma-inspect")
+def chroma_inspect(x_admin_api_key: str = Header(default="")):
+    """
+    TEMPORARY read-only endpoint.
+    Lists all ChromaDB collections and returns the first 5 records
+    (ids, documents, metadatas) from each. Embeddings are NOT returned.
+
+    Requires the same X-Admin-Api-Key header used by /admin/query-logs.
+    Remove this endpoint once inspection is complete.
+    """
+    # ── Auth: ADMIN_API_KEY must be configured — endpoint is disabled if missing ─
+    admin_key = os.getenv("ADMIN_API_KEY", "")
+    if not admin_key:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "Endpoint disabled. ADMIN_API_KEY is not configured."},
+        )
+    if x_admin_api_key != admin_key:
+        return JSONResponse(status_code=403, content={"error": "Forbidden"})
+
+    # ── Use the same CHROMA_DIR constant already used by rag_core.py ─────────
+    from rag_core import CHROMA_DIR
+    import chromadb as _chromadb
+
+    try:
+        client = _chromadb.PersistentClient(path=CHROMA_DIR)
+    except Exception as exc:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": "Could not open ChromaDB",
+                "chroma_path": CHROMA_DIR,
+                "detail": str(exc),
+            },
+        )
+
+    try:
+        collections = client.list_collections()
+    except Exception as exc:
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Failed to list collections", "detail": str(exc)},
+        )
+
+    if not collections:
+        return {
+            "chroma_path": CHROMA_DIR,
+            "collection_count": 0,
+            "collections": [],
+            "note": "No collections found. No PDFs have been uploaded since the last container start.",
+        }
+
+    result = []
+    for col in collections:
+        try:
+            # include explicitly excludes "embeddings" — vectors are never returned
+            data = col.get(
+                limit=5,
+                include=["documents", "metadatas"],
+            )
+            result.append({
+                "name": col.name,
+                "count": col.count(),
+                "sample_ids": data.get("ids", []),
+                "sample_documents": data.get("documents", []),
+                "sample_metadatas": data.get("metadatas", []),
+            })
+        except Exception as exc:
+            result.append({
+                "name": col.name,
+                "error": f"Could not fetch records: {exc}",
+            })
+
+    return {
+        "chroma_path": CHROMA_DIR,
+        "collection_count": len(result),
+        "collections": result,
+    }

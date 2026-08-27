@@ -85,7 +85,7 @@ graph TD
 |---|---|
 | **Frontend** | React 18, Vite, Framer Motion, react-pdf, Clerk Auth |
 | **Backend** | FastAPI, Uvicorn, Python 3.11 |
-| **LLM Inference** | Groq API (Llama 3.1 8B / 3.3 70B / Gemma 2 9B) |
+| **LLM Inference** | Groq API (GPT-OSS 20B / GPT-OSS 120B / Gemma 2 9B) |
 | **RAG Framework** | LangChain, LangChain-Groq, LangChain-Community |
 | **Vector DB** | ChromaDB PersistentClient (Volume Mount) |
 | **Embeddings** | sentence-transformers (`all-MiniLM-L6-v2`); lightweight fallback |

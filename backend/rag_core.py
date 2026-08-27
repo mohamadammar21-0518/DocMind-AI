@@ -6,7 +6,7 @@ Features:
   - ChromaDB vector store
   - BM25 keyword search + Vector search (Hybrid)
   - Groq LLM-as-judge reranking (with dedup-only fallback)
-  - Groq LLM (Llama 3.1)
+  - Groq LLM (GPT-OSS 20B / 120B)
   - Map-Reduce summarization
   - Study notes generation
   - Suggested questions
@@ -74,7 +74,7 @@ check_storage_health()
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 
 # Reranking model used as the LLM-as-judge for scoring chunk relevance.
-RERANK_MODEL    = "llama-3.1-8b-instant"
+RERANK_MODEL    = "openai/gpt-oss-20b"
 
 
 # ── 0. Embeddings ─────────────────────────────────────────────────────────────
@@ -147,8 +147,8 @@ def get_embeddings() -> tuple:
         return (_embeddings_cache["fallback"], True)
 
 GROQ_MODELS = {
-    "Llama 3.1 8B (Fast)"         : "llama-3.1-8b-instant",
-    "Llama 3.3 70B (Best Quality)": "llama-3.3-70b-versatile",
+    "GPT-OSS 20B (Fast)"          : "openai/gpt-oss-20b",
+    "GPT-OSS 120B (Best Quality)" : "openai/gpt-oss-120b",
     "Gemma 2 9B"                  : "gemma2-9b-it",
 }
 
@@ -514,11 +514,11 @@ def _parse_score_map(raw, expected):
 
 
 # ── 4. QA Chain ───────────────────────────────────────────────────────────────
-def build_qa_chain(vectorstore, chunks, groq_api_key, model_name="llama-3.1-8b-instant"):
+def build_qa_chain(vectorstore, chunks, groq_api_key, model_name="openai/gpt-oss-20b"):
     # Fallback order if a model hits rate limit
     fallback_models = [
         model_name,
-        "llama-3.1-8b-instant",
+        "openai/gpt-oss-20b",
         "gemma2-9b-it",
     ]
     # Remove duplicates while preserving order

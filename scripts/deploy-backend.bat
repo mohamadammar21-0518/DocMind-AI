@@ -38,7 +38,7 @@ gcloud run deploy %SERVICE% ^
   --concurrency 10 ^
   --min-instances 0 ^
   --max-instances 3 ^
-  --set-env-vars "CHROMA_PERSIST_DIR=/data/chroma_db,USE_LOCAL_MODELS=true" ^
+  --update-env-vars "CHROMA_PERSIST_DIR=/data/chroma_db,USE_LOCAL_MODELS=true" ^
   --project %PROJECT_ID%
 
 IF %ERRORLEVEL% NEQ 0 (

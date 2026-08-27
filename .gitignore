@@ -16,3 +16,9 @@ frontend/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Editor
+.vscode/
+
+# Local dev scripts
+backend/inspect_chroma.py

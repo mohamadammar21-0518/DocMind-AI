@@ -38,7 +38,7 @@ export default function App() {
   })
   const [suggestedQuestions, setSuggestedQuestions] = useState([])
   const [loadingSug,  setLoadingSug]  = useState(false)
-  const [selectedModel, setSelectedModel] = useState('Llama 3.1 8B (Fast)')
+  const [selectedModel, setSelectedModel] = useState('GPT-OSS 20B (Fast)')
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile())
   const [mobile,      setMobile]      = useState(isMobile())
   const [theme,       setTheme]       = useState(() =>

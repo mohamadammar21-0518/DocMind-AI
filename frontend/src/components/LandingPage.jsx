@@ -96,9 +96,9 @@ No subscription required, no credit card needed to get started.`,
     answer: `DocMind uses **Llama 3.1** models via the Groq API — one of the fastest inference providers available.
 
 Available models:
-- **Llama 3.1 8B** — fastest, great for most questions
-- **Llama 3.1 70B** — more nuanced reasoning, slightly slower
-- **Llama 3.3 70B** — best quality for complex documents
+- **GPT-OSS 20B** — fastest, great for most questions
+- **GPT-OSS 120B** — best quality for complex documents
+- **Gemma 2 9B** — lightweight & efficient
 
 You can switch models in the sidebar. The vector store and retrieval layer are built with **ChromaDB** and **LangChain**.`,
   },

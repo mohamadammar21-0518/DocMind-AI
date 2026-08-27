@@ -9,9 +9,9 @@ import Spinner from './Spinner'
 import { staggerContainer, staggerItem, fadeUp, uploadSuccess, accordion } from '../motion'
 
 const MODELS = [
-  { label: 'Llama 3.1 8B (Fast)',       desc: 'Best for quick answers',       color: 'var(--success)' },
-  { label: 'Llama 3.3 70B (Best Quality)', desc: 'Highest quality reasoning', color: 'var(--accent)' },
-  { label: 'Gemma 2 9B',                desc: 'Lightweight & efficient',      color: 'var(--cyan)' },
+  { label: 'GPT-OSS 20B (Fast)',          desc: 'Best for quick answers',       color: 'var(--success)' },
+  { label: 'GPT-OSS 120B (Best Quality)', desc: 'Highest quality reasoning',    color: 'var(--accent)' },
+  { label: 'Gemma 2 9B',                  desc: 'Lightweight & efficient',      color: 'var(--cyan)' },
 ]
 
 const STEPS = ['Reading PDF...', 'Chunking text...', 'Building index...', 'Finalizing...']
